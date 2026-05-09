@@ -227,35 +227,15 @@ pub fn debug_get_scan_result_state(state: tauri::State<'_, AppState>) -> Result<
 
 #[tauri::command]
 pub fn execute_cleanup(
-    selected_ids: Vec<String>,
+    file_paths: Vec<String>,
     mode: String,
-    state: tauri::State<'_, AppState>,
 ) -> Result<CleanupReport, String> {
-    let result = state
-        .scan_result
-        .lock()
-        .map_err(|e| e.to_string())?;
-
-    let scan = result.as_ref().ok_or("Scan not completed yet")?;
-
-    // Collect all file paths from selected groups
-    let mut paths: Vec<String> = Vec::new();
-    for group in &scan.groups {
-        if selected_ids.contains(&group.id) {
-            for file in &group.files {
-                if file.status == FileStatus::Remove {
-                    paths.push(file.path.clone());
-                }
-            }
-        }
-    }
-
     let trash_mode = match mode.as_str() {
         "delete" => TrashMode::Delete,
         _ => TrashMode::Trash,
     };
 
-    Ok(trash::cleanup_files(&paths, &trash_mode))
+    Ok(trash::cleanup_files(&file_paths, &trash_mode))
 }
 
 #[tauri::command]

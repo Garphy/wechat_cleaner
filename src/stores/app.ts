@@ -73,36 +73,72 @@ export const useAppStore = defineStore('app', () => {
   const progress = ref<ScanProgress | null>(null)
   const scanResult = ref<ScanResult | null>(null)
   const isScanning = ref(false)
-  const selectedGroupIds = ref<Set<string>>(new Set())
 
-  const totalSelectedSize = computed(() => {
-    if (!scanResult.value) return 0
-    return scanResult.value.groups
-      .filter((g) => selectedGroupIds.value.has(g.id))
-      .reduce((acc, g) => acc + g.reclaimable_size, 0)
-  })
+  // selectedFiles: set of file paths to delete
+  const selectedFiles = ref<Set<string>>(new Set())
 
-  const totalSelectedFiles = computed(() => {
-    if (!scanResult.value) return 0
-    return scanResult.value.groups
-      .filter((g) => selectedGroupIds.value.has(g.id))
-      .reduce((acc, g) => acc + g.files.filter((f) => f.status === 'Remove').length, 0)
-  })
+  // Initialize selection: all 'Remove' files are selected by default
+  function initFileSelection(groups: FileGroup[]) {
+    selectedFiles.value = new Set()
+    groups.forEach((g) => {
+      g.files.forEach((f) => {
+        if (f.status === 'Remove') {
+          selectedFiles.value.add(f.path)
+        }
+      })
+    })
+  }
 
-  function toggleGroup(id: string) {
-    if (selectedGroupIds.value.has(id)) {
-      selectedGroupIds.value.delete(id)
+  function toggleFile(path: string) {
+    if (selectedFiles.value.has(path)) {
+      selectedFiles.value.delete(path)
     } else {
-      selectedGroupIds.value.add(id)
+      selectedFiles.value.add(path)
     }
   }
 
-  function selectAllGroups() {
-    scanResult.value?.groups.forEach((g) => selectedGroupIds.value.add(g.id))
+  function isFileSelected(path: string): boolean {
+    return selectedFiles.value.has(path)
   }
 
-  function deselectAllGroups() {
-    selectedGroupIds.value.clear()
+  function selectAllFiles(groups: FileGroup[]) {
+    groups.forEach((g) => g.files.forEach((f) => selectedFiles.value.add(f.path)))
+  }
+
+  function deselectAllFiles() {
+    selectedFiles.value.clear()
+  }
+
+  function toggleGroupFiles(group: FileGroup) {
+    const allSelected = group.files.every((f) => selectedFiles.value.has(f.path))
+    group.files.forEach((f) => {
+      if (allSelected) {
+        selectedFiles.value.delete(f.path)
+      } else {
+        selectedFiles.value.add(f.path)
+      }
+    })
+  }
+
+  function isGroupFullySelected(group: FileGroup): boolean {
+    return group.files.length > 0 && group.files.every((f) => selectedFiles.value.has(f.path))
+  }
+
+  function isGroupPartiallySelected(group: FileGroup): boolean {
+    const count = group.files.filter((f) => selectedFiles.value.has(f.path)).length
+    return count > 0 && count < group.files.length
+  }
+
+  function getSelectedFileCount(): number {
+    return selectedFiles.value.size
+  }
+
+  function getSelectedFiles(groups: FileGroup[]): FileEntry[] {
+    const result: FileEntry[] = []
+    groups.forEach((g) => g.files.forEach((f) => {
+      if (selectedFiles.value.has(f.path)) result.push(f)
+    }))
+    return result
   }
 
   return {
@@ -111,11 +147,16 @@ export const useAppStore = defineStore('app', () => {
     progress,
     scanResult,
     isScanning,
-    selectedGroupIds,
-    totalSelectedSize,
-    totalSelectedFiles,
-    toggleGroup,
-    selectAllGroups,
-    deselectAllGroups,
+    selectedFiles,
+    initFileSelection,
+    toggleFile,
+    isFileSelected,
+    selectAllFiles,
+    deselectAllFiles,
+    toggleGroupFiles,
+    isGroupFullySelected,
+    isGroupPartiallySelected,
+    getSelectedFileCount,
+    getSelectedFiles,
   }
 })

@@ -29,16 +29,9 @@ const redundantFiles = computed(() =>
 )
 const redundantSize = computed(() => allGroups.value.reduce((acc, g) => acc + g.reclaimable_size, 0))
 const durationMs = computed(() => store.scanResult?.duration_ms ?? 0)
-const totalSelectedSize = computed(() =>
-  allGroups.value
-    .filter((g) => store.selectedGroupIds.has(g.id))
-    .reduce((acc, g) => acc + g.reclaimable_size, 0)
-)
-const totalSelectedFiles = computed(() =>
-  allGroups.value
-    .filter((g) => store.selectedGroupIds.has(g.id))
-    .reduce((acc, g) => acc + g.files.filter((f) => f.status === 'Remove').length, 0)
-)
+const selectedFileCount = computed(() => store.getSelectedFileCount())
+const selectedFilesToDelete = computed(() => store.getSelectedFiles(allGroups.value))
+const selectedDeleteSize = computed(() => selectedFilesToDelete.value.reduce((acc, f) => acc + f.size, 0))
 
 // ── Path shortening ─────────────────────────────────────────────
 function shortenPath(path: string): string {
@@ -75,8 +68,7 @@ function formatTimestamp(ts: number): string {
 function formatDuration(ms: number): string {
   const seconds = Math.floor(ms / 1000)
   if (seconds < 60) return seconds + ' 秒'
-  const minutes = Math.floor(seconds / 60)
-  return `${minutes} 分 ${seconds % 60} 秒`
+  return `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`
 }
 
 function getGroupTypeLabel(type: string): string {
@@ -85,29 +77,24 @@ function getGroupTypeLabel(type: string): string {
   return type
 }
 
-function getStatusLabel(status: string): string {
-  if (status === 'Keep') return '保留'
-  if (status === 'Remove') return '删除'
-  if (status === 'UserDecided') return '待定'
-  return status
-}
-
-function getStatusColor(status: string): string {
-  if (status === 'Keep') return 'text-green-400 bg-green-900/30 border-green-800'
-  if (status === 'Remove') return 'text-red-400 bg-red-900/30 border-red-800'
-  return 'text-amber-400 bg-amber-900/30 border-amber-800'
-}
-
 function toggleExpand(id: string) {
-  if (expandedGroups.value.has(id)) {
-    expandedGroups.value.delete(id)
-  } else {
-    expandedGroups.value.add(id)
-  }
+  if (expandedGroups.value.has(id)) expandedGroups.value.delete(id)
+  else expandedGroups.value.add(id)
 }
 
 function isExpanded(id: string): boolean {
   return expandedGroups.value.has(id)
+}
+
+// ── File selection helpers ───────────────────────────────────────
+function getCheckboxClass(group: FileGroup): string {
+  if (store.isGroupFullySelected(group)) return 'text-red-500'
+  if (store.isGroupPartiallySelected(group)) return 'text-amber-500'
+  return 'text-gray-500'
+}
+
+function getCheckboxIndeterminate(group: FileGroup): boolean {
+  return store.isGroupPartiallySelected(group)
 }
 
 // ── Data loading ────────────────────────────────────────────────
@@ -127,7 +114,7 @@ async function loadResults(append = false) {
       allGroups.value = [...allGroups.value, ...newGroups]
     } else {
       allGroups.value = newGroups
-      newGroups.forEach((g: FileGroup) => store.selectedGroupIds.add(g.id))
+      store.initFileSelection(newGroups)
     }
     if (newGroups.length < pageSize) hasMore.value = false
   } catch (e) {
@@ -139,12 +126,8 @@ async function loadResults(append = false) {
 }
 
 function handleSort(field: 'size' | 'time' | 'name') {
-  if (sortField.value === field) {
-    sortOrder.value = sortOrder.value === 'desc' ? 'asc' : 'desc'
-  } else {
-    sortField.value = field
-    sortOrder.value = 'desc'
-  }
+  if (sortField.value === field) sortOrder.value = sortOrder.value === 'desc' ? 'asc' : 'desc'
+  else { sortField.value = field; sortOrder.value = 'desc' }
   currentPage.value = 0
   hasMore.value = true
   allGroups.value = []
@@ -154,17 +137,19 @@ function handleSort(field: 'size' | 'time' | 'name') {
 async function executeCleanup() {
   cleaningUp.value = true
   try {
-    const selectedIdsArray = Array.from(store.selectedGroupIds)
+    const filePaths = selectedFilesToDelete.value.map((f) => f.path)
     const report = await invoke<CleanupReport>('execute_cleanup', {
-      selectedIds: selectedIdsArray,
-      mode: 'trash',
+      filePaths,
+      mode: store.config?.trash_mode || 'trash',
     })
     cleanupReport.value = report
     showReport.value = true
     showCleanupModal.value = false
-    const cleanedIds = new Set(selectedIdsArray)
-    allGroups.value = allGroups.value.filter((g) => !cleanedIds.has(g.id))
-    selectedIdsArray.forEach((id) => store.selectedGroupIds.delete(id))
+    const cleanedPaths = new Set(filePaths)
+    allGroups.value = allGroups.value
+      .map((g) => ({ ...g, files: g.files.filter((f) => !cleanedPaths.has(f.path)) }))
+      .filter((g) => g.files.length > 0)
+    filePaths.forEach((p) => store.selectedFiles.delete(p))
   } catch (e) {
     error.value = String(e)
   } finally {
@@ -188,8 +173,8 @@ function handleScroll() {
 onMounted(async () => {
   if (store.scanResult?.groups && store.scanResult.groups.length > 0) {
     allGroups.value = store.scanResult.groups
+    store.initFileSelection(store.scanResult.groups)
     loading.value = false
-    store.scanResult.groups.forEach((g: FileGroup) => store.selectedGroupIds.add(g.id))
   } else {
     loadResults()
   }
@@ -278,8 +263,8 @@ onMounted(async () => {
 
       <div class="flex-1" />
 
-      <button @click="store.selectAllGroups()" class="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs text-gray-400 hover:bg-gray-700">全选</button>
-      <button @click="store.deselectAllGroups()" class="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs text-gray-400 hover:bg-gray-700">取消</button>
+      <button @click="store.selectAllFiles(allGroups)" class="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs text-gray-400 hover:bg-gray-700">全选删除</button>
+      <button @click="store.deselectAllFiles()" class="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs text-gray-400 hover:bg-gray-700">全部保留</button>
     </div>
 
     <!-- Empty state -->
@@ -288,7 +273,7 @@ onMounted(async () => {
       <div class="text-sm">未发现冗余文件</div>
     </div>
 
-    <!-- Scrollable Group List (no virtual scroll — expandable items need natural flow) -->
+    <!-- Group List -->
     <div
       ref="scrollContainer"
       class="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1"
@@ -301,12 +286,15 @@ onMounted(async () => {
       >
         <!-- Group Header -->
         <div class="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-gray-750 transition-colors" @click="toggleExpand(group.id)">
+          <!-- Group Checkbox: toggles all files in group -->
           <label class="flex items-center" @click.stop>
             <input
               type="checkbox"
-              :checked="store.selectedGroupIds.has(group.id)"
-              @change="store.toggleGroup(group.id)"
-              class="w-3.5 h-3.5 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer"
+              :checked="store.isGroupFullySelected(group)"
+              :indeterminate="getCheckboxIndeterminate(group)"
+              @change="store.toggleGroupFiles(group)"
+              class="w-3.5 h-3.5 rounded border-gray-600 bg-gray-700 focus:ring-offset-0 cursor-pointer"
+              :class="getCheckboxClass(group)"
             />
           </label>
 
@@ -321,9 +309,9 @@ onMounted(async () => {
             <div class="text-xs text-white font-medium truncate">{{ group.base_name }}</div>
           </div>
 
-          <div class="text-right shrink-0">
-            <span class="text-xs text-white">{{ group.files.length }} 文件</span>
-            <span class="text-[10px] text-green-400 ml-1.5">可释放 {{ formatSize(group.reclaimable_size) }}</span>
+          <div class="text-right shrink-0 flex items-center gap-3">
+            <span class="text-[10px] text-gray-500">{{ group.files.length }} 文件</span>
+            <span class="text-[10px] text-green-400">可释放 {{ formatSize(group.reclaimable_size) }}</span>
           </div>
 
           <svg class="w-3.5 h-3.5 text-gray-500 transition-transform duration-200 shrink-0"
@@ -340,9 +328,23 @@ onMounted(async () => {
             :key="file.path"
             class="flex items-center gap-2 px-3 py-1.5 border-b border-gray-700/50 last:border-b-0 hover:bg-gray-750 transition-colors"
           >
+            <!-- File Checkbox: checked = will be deleted -->
+            <label class="flex items-center" @click.stop>
+              <input
+                type="checkbox"
+                :checked="store.isFileSelected(file.path)"
+                @change="store.toggleFile(file.path)"
+                class="w-3 h-3 rounded border-gray-600 bg-gray-700 focus:ring-offset-0 cursor-pointer"
+                :class="store.isFileSelected(file.path) ? 'text-red-500' : 'text-green-500'"
+              />
+            </label>
+
+            <!-- Status badge: linked to checkbox -->
             <span class="px-1 py-0.5 rounded text-[9px] font-medium border shrink-0"
-              :class="getStatusColor(file.status)">
-              {{ getStatusLabel(file.status) }}
+              :class="store.isFileSelected(file.path)
+                ? 'text-red-400 bg-red-900/30 border-red-800'
+                : 'text-green-400 bg-green-900/30 border-green-800'">
+              {{ store.isFileSelected(file.path) ? '删除' : '保留' }}
             </span>
 
             <div class="flex-1 min-w-0">
@@ -373,29 +375,45 @@ onMounted(async () => {
       class="flex-shrink-0 bg-gray-800/95 backdrop-blur border border-gray-700 rounded-lg p-3 flex items-center gap-4 mt-2">
       <div class="flex-1">
         <span class="text-xs text-gray-400">
-          已选 <span class="text-white font-medium">{{ totalSelectedFiles }}</span> 个文件,
-          释放 <span class="text-green-400 font-medium">{{ formatSize(totalSelectedSize) }}</span>
+          待删除 <span class="text-red-400 font-medium">{{ selectedFileCount }}</span> 个文件,
+          释放 <span class="text-green-400 font-medium">{{ formatSize(selectedDeleteSize) }}</span>
         </span>
       </div>
       <button
         @click="showCleanupModal = true"
-        :disabled="totalSelectedFiles === 0"
+        :disabled="selectedFileCount === 0"
         class="px-5 py-2 bg-red-600 hover:bg-red-500 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-xs font-medium text-white transition-all"
       >
-        🗑️ 清理到回收站
+        🗑️ 清理选中文件
       </button>
     </div>
 
     <!-- Cleanup Confirmation Modal -->
     <Teleport to="body">
       <div v-if="showCleanupModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="showCleanupModal = false">
-        <div class="bg-gray-800 rounded-xl border border-gray-700 p-6 max-w-sm w-full mx-4">
-          <h3 class="text-lg font-semibold text-white mb-3">确认清理</h3>
-          <p class="text-sm text-gray-400 mb-4">
-            确定要将选中的 <span class="text-white font-medium">{{ totalSelectedFiles }}</span> 个文件
-            {{ store.config?.trash_mode === 'delete' ? '永久删除' : '移到回收站' }}？
+        <div class="bg-gray-800 rounded-xl border border-gray-700 p-6 max-w-lg w-full mx-4 max-h-[80vh] flex flex-col">
+          <h3 class="text-lg font-semibold text-white mb-2">确认清理</h3>
+          <p class="text-sm text-gray-400 mb-3">
+            以下 <span class="text-red-400 font-medium">{{ selectedFileCount }}</span> 个文件将被
+            <span class="font-medium" :class="store.config?.trash_mode === 'delete' ? 'text-red-400' : 'text-amber-400'">
+              {{ store.config?.trash_mode === 'delete' ? '永久删除' : '移到回收站' }}
+            </span>，
+            共释放 <span class="text-green-400 font-medium">{{ formatSize(selectedDeleteSize) }}</span>：
           </p>
-          <div class="flex gap-3 justify-end">
+
+          <!-- File list -->
+          <div class="flex-1 min-h-0 overflow-y-auto bg-gray-900 rounded-lg border border-gray-700 p-2 space-y-1">
+            <div
+              v-for="file in selectedFilesToDelete"
+              :key="file.path"
+              class="flex items-center gap-2 px-2 py-1 text-xs"
+            >
+              <span class="text-gray-300 font-mono flex-1 truncate" :title="file.path">{{ shortenPath(file.path) }}</span>
+              <span class="text-gray-500 shrink-0">{{ formatSize(file.size) }}</span>
+            </div>
+          </div>
+
+          <div class="flex gap-3 justify-end mt-4">
             <button @click="showCleanupModal = false" class="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">取消</button>
             <button @click="executeCleanup" :disabled="cleaningUp"
               class="px-4 py-2 bg-red-600 hover:bg-red-500 disabled:bg-gray-700 rounded-lg text-sm font-medium text-white transition-all">
