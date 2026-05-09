@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useAppStore, type FileGroup, type FileEntry, type CleanupReport } from '../stores/app'
 import { useVirtualizer } from '@tanstack/vue-virtual'
@@ -25,22 +25,14 @@ const allGroups = ref<FileGroup[]>([])
 
 const virtualScrollRef = ref<HTMLElement | null>(null)
 
-const virtualizer = useVirtualizer<HTMLElement, HTMLDivElement>({
-  count: 0,
+const virtualizerOptions = computed(() => ({
+  count: allGroups.value.length,
   getScrollElement: () => virtualScrollRef.value,
   estimateSize: () => 120,
   overscan: 10,
-})
+}))
 
-// Update virtualizer when groups change
-watch(
-  allGroups,
-  (newGroups) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ;(virtualizer.value as any).setOptions({ count: newGroups.length })
-  },
-  { deep: true }
-)
+const virtualizer = useVirtualizer<HTMLElement, HTMLDivElement>(virtualizerOptions)
 
 const totalFiles = computed(() => {
   return allGroups.value.reduce((acc, g) => acc + g.files.length, 0)
