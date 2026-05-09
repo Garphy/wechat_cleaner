@@ -139,7 +139,7 @@ async function cancelScan() {
 </script>
 
 <template>
-  <div class="max-w-3xl mx-auto space-y-6">
+  <div class="max-w-3xl mx-auto space-y-6 overflow-y-auto h-full pr-1">
     <!-- Error -->
     <div v-if="error" class="bg-red-900/30 border border-red-800 rounded-lg p-4 text-red-300 text-sm">
       <div class="font-medium mb-1">扫描出错</div>

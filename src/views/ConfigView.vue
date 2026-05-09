@@ -172,7 +172,7 @@ async function startScan() {
 </script>
 
 <template>
-  <div class="max-w-2xl mx-auto space-y-6">
+  <div class="max-w-2xl mx-auto space-y-6 overflow-y-auto h-full pr-1">
     <!-- Loading -->
     <div v-if="loading" class="flex items-center justify-center py-20">
       <div class="flex items-center gap-3 text-gray-400">

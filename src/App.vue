@@ -58,7 +58,7 @@ const navItems = [
       </header>
 
       <!-- Page Content -->
-      <main class="flex-1 overflow-auto p-6">
+      <main class="flex-1 overflow-hidden p-6">
         <RouterView />
       </main>
     </div>

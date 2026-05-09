@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-import { useAppStore, type FileGroup, type FileEntry, type CleanupReport } from '../stores/app'
-import { useVirtualizer } from '@tanstack/vue-virtual'
+import { useAppStore, type FileGroup, type CleanupReport } from '../stores/app'
 
 const store = useAppStore()
 
@@ -23,52 +22,42 @@ const showReport = ref(false)
 
 const allGroups = ref<FileGroup[]>([])
 
-const virtualScrollRef = ref<HTMLElement | null>(null)
-
-const virtualizerOptions = computed(() => ({
-  count: allGroups.value.length,
-  getScrollElement: () => virtualScrollRef.value,
-  estimateSize: () => 120,
-  overscan: 10,
-}))
-
-const virtualizer = useVirtualizer<HTMLElement, HTMLDivElement>(virtualizerOptions)
-
-const totalFiles = computed(() => {
-  return allGroups.value.reduce((acc, g) => acc + g.files.length, 0)
-})
-
-const totalSize = computed(() => {
-  return allGroups.value.reduce((acc, g) => acc + g.total_size, 0)
-})
-
-const redundantFiles = computed(() => {
-  return allGroups.value.reduce(
-    (acc, g) => acc + g.files.filter((f) => f.status === 'Remove').length,
-    0
-  )
-})
-
-const redundantSize = computed(() => {
-  return allGroups.value.reduce((acc, g) => acc + g.reclaimable_size, 0)
-})
-
-const durationMs = computed(() => {
-  return store.scanResult?.duration_ms ?? 0
-})
-
-const totalSelectedSize = computed(() => {
-  return allGroups.value
+const totalFiles = computed(() => allGroups.value.reduce((acc, g) => acc + g.files.length, 0))
+const totalSize = computed(() => allGroups.value.reduce((acc, g) => acc + g.total_size, 0))
+const redundantFiles = computed(() =>
+  allGroups.value.reduce((acc, g) => acc + g.files.filter((f) => f.status === 'Remove').length, 0)
+)
+const redundantSize = computed(() => allGroups.value.reduce((acc, g) => acc + g.reclaimable_size, 0))
+const durationMs = computed(() => store.scanResult?.duration_ms ?? 0)
+const totalSelectedSize = computed(() =>
+  allGroups.value
     .filter((g) => store.selectedGroupIds.has(g.id))
     .reduce((acc, g) => acc + g.reclaimable_size, 0)
-})
-
-const totalSelectedFiles = computed(() => {
-  return allGroups.value
+)
+const totalSelectedFiles = computed(() =>
+  allGroups.value
     .filter((g) => store.selectedGroupIds.has(g.id))
     .reduce((acc, g) => acc + g.files.filter((f) => f.status === 'Remove').length, 0)
-})
+)
 
+// ── Path shortening ─────────────────────────────────────────────
+function shortenPath(path: string): string {
+  if (!path) return ''
+  const config = store.config
+  if (!config) return path
+  const prefixes = [config.wechat_dir, ...(config.archive_dirs || [])]
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+  for (const prefix of prefixes) {
+    if (path.startsWith(prefix)) {
+      const rest = path.slice(prefix.length).replace(/^[/\\]/, '')
+      return rest || path
+    }
+  }
+  return path
+}
+
+// ── Formatters ──────────────────────────────────────────────────
 function formatSize(bytes: number): string {
   if (bytes === 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
@@ -87,8 +76,7 @@ function formatDuration(ms: number): string {
   const seconds = Math.floor(ms / 1000)
   if (seconds < 60) return seconds + ' 秒'
   const minutes = Math.floor(seconds / 60)
-  const remainSeconds = seconds % 60
-  return `${minutes} 分 ${remainSeconds} 秒`
+  return `${minutes} 分 ${seconds % 60} 秒`
 }
 
 function getGroupTypeLabel(type: string): string {
@@ -122,6 +110,7 @@ function isExpanded(id: string): boolean {
   return expandedGroups.value.has(id)
 }
 
+// ── Data loading ────────────────────────────────────────────────
 async function loadResults(append = false) {
   if (loadingMore.value) return
   loadingMore.value = true
@@ -129,7 +118,7 @@ async function loadResults(append = false) {
   try {
     const result = await invoke<any>('get_paged_results', {
       page: currentPage.value,
-      page_size: pageSize,
+      pageSize: pageSize,
       sort: sortField.value,
       order: sortOrder.value,
     })
@@ -138,14 +127,9 @@ async function loadResults(append = false) {
       allGroups.value = [...allGroups.value, ...newGroups]
     } else {
       allGroups.value = newGroups
-      // Auto-select all Remove status groups
-      newGroups.forEach((g: FileGroup) => {
-        store.selectedGroupIds.add(g.id)
-      })
+      newGroups.forEach((g: FileGroup) => store.selectedGroupIds.add(g.id))
     }
-    if (newGroups.length < pageSize) {
-      hasMore.value = false
-    }
+    if (newGroups.length < pageSize) hasMore.value = false
   } catch (e) {
     error.value = String(e)
   } finally {
@@ -167,23 +151,6 @@ function handleSort(field: 'size' | 'time' | 'name') {
   loadResults()
 }
 
-function handleScroll() {
-  if (!virtualScrollRef.value || loadingMore.value || !hasMore.value) return
-  const { scrollTop, scrollHeight, clientHeight } = virtualScrollRef.value
-  if (scrollTop + clientHeight >= scrollHeight - 100) {
-    currentPage.value++
-    loadResults(true)
-  }
-}
-
-function getGroupById(index: number): FileGroup {
-  const group = allGroups.value[index]
-  if (!group) {
-    return { id: '', group_type: '', base_name: '', total_size: 0, reclaimable_size: 0, files: [], suggested_keep: 1 }
-  }
-  return group
-}
-
 async function executeCleanup() {
   cleaningUp.value = true
   try {
@@ -195,8 +162,6 @@ async function executeCleanup() {
     cleanupReport.value = report
     showReport.value = true
     showCleanupModal.value = false
-
-    // Remove cleaned groups from list
     const cleanedIds = new Set(selectedIdsArray)
     allGroups.value = allGroups.value.filter((g) => !cleanedIds.has(g.id))
     selectedIdsArray.forEach((id) => store.selectedGroupIds.delete(id))
@@ -207,29 +172,32 @@ async function executeCleanup() {
   }
 }
 
-onMounted(async () => {
-  console.log('[DEBUG] ResultView onMounted. store.scanResult:', store.scanResult)
-  console.log('[DEBUG] groups:', store.scanResult?.groups?.length)
+// ── Infinite scroll ─────────────────────────────────────────────
+const scrollContainer = ref<HTMLElement | null>(null)
 
-  // First try to load from store (set by ScanView)
+function handleScroll() {
+  if (!scrollContainer.value || loadingMore.value || !hasMore.value) return
+  const { scrollTop, scrollHeight, clientHeight } = scrollContainer.value
+  if (scrollTop + clientHeight >= scrollHeight - 100) {
+    currentPage.value++
+    loadResults(true)
+  }
+}
+
+// ── Init ────────────────────────────────────────────────────────
+onMounted(async () => {
   if (store.scanResult?.groups && store.scanResult.groups.length > 0) {
-    console.log('[DEBUG] Using store data, groups count:', store.scanResult.groups.length)
     allGroups.value = store.scanResult.groups
     loading.value = false
-    // Auto-select all Remove status groups
-    store.scanResult.groups.forEach((g: FileGroup) => {
-      store.selectedGroupIds.add(g.id)
-    })
+    store.scanResult.groups.forEach((g: FileGroup) => store.selectedGroupIds.add(g.id))
   } else {
-    // Fallback: load from backend
-    console.log('[DEBUG] No store data, falling back to loadResults()')
     loadResults()
   }
 })
 </script>
 
 <template>
-  <div class="space-y-5">
+  <div class="flex flex-col h-full">
     <!-- Loading -->
     <div v-if="loading" class="flex items-center justify-center py-20">
       <div class="flex items-center gap-3 text-gray-400">
@@ -242,17 +210,15 @@ onMounted(async () => {
     </div>
 
     <!-- Error -->
-    <div v-else-if="error" class="bg-red-900/30 border border-red-800 rounded-lg p-4 text-red-300 text-sm">
+    <div v-else-if="error" class="bg-red-900/30 border border-red-800 rounded-lg p-3 text-red-300 text-sm">
       <div class="font-medium mb-1">加载出错</div>
       {{ error }}
     </div>
 
-    <!-- Report Modal (after cleanup) -->
-    <div v-if="showReport && cleanupReport" class="bg-green-900/20 border border-green-800 rounded-xl p-5">
-      <h3 class="text-lg font-semibold text-green-400 mb-3 flex items-center gap-2">
-        <span class="text-xl">✅</span> 清理完成
-      </h3>
-      <div class="grid grid-cols-2 gap-4 text-sm">
+    <!-- Report -->
+    <div v-if="showReport && cleanupReport" class="bg-green-900/20 border border-green-800 rounded-xl p-4">
+      <h3 class="text-base font-semibold text-green-400 mb-2">✅ 清理完成</h3>
+      <div class="grid grid-cols-2 gap-3 text-sm">
         <div>
           <span class="text-gray-500">已清理文件：</span>
           <span class="text-white font-medium">{{ cleanupReport.files_removed }}</span>
@@ -262,7 +228,7 @@ onMounted(async () => {
           <span class="text-green-400 font-medium">{{ formatSize(cleanupReport.space_freed) }}</span>
         </div>
       </div>
-      <div v-if="cleanupReport.errors.length > 0" class="mt-3">
+      <div v-if="cleanupReport.errors.length > 0" class="mt-2">
         <div class="text-xs text-red-400 font-medium mb-1">错误：</div>
         <div v-for="err in cleanupReport.errors" :key="err.path" class="text-xs text-red-300/70 font-mono">
           {{ err.path }}: {{ err.error }}
@@ -271,213 +237,130 @@ onMounted(async () => {
     </div>
 
     <!-- Stats Bar -->
-    <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
-      <div class="bg-gray-800 rounded-lg border border-gray-700 p-3">
-        <div class="text-xs text-gray-500">总文件数</div>
-        <div class="text-lg font-bold text-white">{{ totalFiles }}</div>
+    <div class="grid grid-cols-5 gap-2 mb-3">
+      <div class="bg-gray-800 rounded-lg border border-gray-700 px-2 py-1.5">
+        <div class="text-[10px] text-gray-500">总文件数</div>
+        <div class="text-sm font-bold text-white">{{ totalFiles }}</div>
       </div>
-      <div class="bg-gray-800 rounded-lg border border-gray-700 p-3">
-        <div class="text-xs text-gray-500">总大小</div>
-        <div class="text-lg font-bold text-white">{{ formatSize(totalSize) }}</div>
+      <div class="bg-gray-800 rounded-lg border border-gray-700 px-2 py-1.5">
+        <div class="text-[10px] text-gray-500">总大小</div>
+        <div class="text-sm font-bold text-white">{{ formatSize(totalSize) }}</div>
       </div>
-      <div class="bg-gray-800 rounded-lg border border-gray-700 p-3">
-        <div class="text-xs text-gray-500">冗余文件数</div>
-        <div class="text-lg font-bold text-amber-400">{{ redundantFiles }}</div>
+      <div class="bg-gray-800 rounded-lg border border-gray-700 px-2 py-1.5">
+        <div class="text-[10px] text-gray-500">冗余文件</div>
+        <div class="text-sm font-bold text-amber-400">{{ redundantFiles }}</div>
       </div>
-      <div class="bg-gray-800 rounded-lg border border-gray-700 p-3">
-        <div class="text-xs text-gray-500">可释放空间</div>
-        <div class="text-lg font-bold text-green-400">{{ formatSize(redundantSize) }}</div>
+      <div class="bg-gray-800 rounded-lg border border-gray-700 px-2 py-1.5">
+        <div class="text-[10px] text-gray-500">可释放</div>
+        <div class="text-sm font-bold text-green-400">{{ formatSize(redundantSize) }}</div>
       </div>
-      <div class="bg-gray-800 rounded-lg border border-gray-700 p-3">
-        <div class="text-xs text-gray-500">扫描耗时</div>
-        <div class="text-lg font-bold text-white">{{ formatDuration(durationMs) }}</div>
+      <div class="bg-gray-800 rounded-lg border border-gray-700 px-2 py-1.5">
+        <div class="text-[10px] text-gray-500">耗时</div>
+        <div class="text-sm font-bold text-white">{{ formatDuration(durationMs) }}</div>
       </div>
     </div>
 
     <!-- Sort Controls -->
-    <div class="flex items-center gap-3 flex-wrap">
-      <span class="text-sm text-gray-500">排序：</span>
+    <div class="flex items-center gap-2 mb-3">
+      <span class="text-xs text-gray-500">排序：</span>
       <button
-        @click="handleSort('size')"
-        class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-        :class="
-          sortField === 'size'
-            ? 'bg-blue-600/20 text-blue-400 border border-blue-800'
-            : 'bg-gray-800 text-gray-400 border border-gray-700 hover:bg-gray-700'
-        "
+        v-for="f in ['size', 'time', 'name'] as const"
+        :key="f"
+        @click="handleSort(f)"
+        class="px-2 py-1 rounded text-xs font-medium transition-all"
+        :class="sortField === f
+          ? 'bg-blue-600/20 text-blue-400 border border-blue-800'
+          : 'bg-gray-800 text-gray-400 border border-gray-700 hover:bg-gray-700'"
       >
-        按大小 {{ sortField === 'size' ? (sortOrder === 'desc' ? '↓' : '↑') : '' }}
-      </button>
-      <button
-        @click="handleSort('time')"
-        class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-        :class="
-          sortField === 'time'
-            ? 'bg-blue-600/20 text-blue-400 border border-blue-800'
-            : 'bg-gray-800 text-gray-400 border border-gray-700 hover:bg-gray-700'
-        "
-      >
-        按时间 {{ sortField === 'time' ? (sortOrder === 'desc' ? '↓' : '↑') : '' }}
-      </button>
-      <button
-        @click="handleSort('name')"
-        class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-        :class="
-          sortField === 'name'
-            ? 'bg-blue-600/20 text-blue-400 border border-blue-800'
-            : 'bg-gray-800 text-gray-400 border border-gray-700 hover:bg-gray-700'
-        "
-      >
-        按名称 {{ sortField === 'name' ? (sortOrder === 'desc' ? '↓' : '↑') : '' }}
+        {{ f === 'size' ? '大小' : f === 'time' ? '时间' : '名称' }}
+        {{ sortField === f ? (sortOrder === 'desc' ? '↓' : '↑') : '' }}
       </button>
 
       <div class="flex-1" />
 
-      <button
-        @click="store.selectAllGroups()"
-        class="px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-xs text-gray-400 hover:bg-gray-700 transition-colors"
-      >
-        全选
-      </button>
-      <button
-        @click="store.deselectAllGroups()"
-        class="px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-xs text-gray-400 hover:bg-gray-700 transition-colors"
-      >
-        取消全选
-      </button>
+      <button @click="store.selectAllGroups()" class="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs text-gray-400 hover:bg-gray-700">全选</button>
+      <button @click="store.deselectAllGroups()" class="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs text-gray-400 hover:bg-gray-700">取消</button>
     </div>
 
     <!-- Empty state -->
-    <div
-      v-if="!loading && allGroups.length === 0 && !error"
-      class="text-center py-16 text-gray-500"
-    >
+    <div v-if="!loading && allGroups.length === 0 && !error" class="text-center py-16 text-gray-500">
       <div class="text-4xl mb-3">📭</div>
       <div class="text-sm">未发现冗余文件</div>
     </div>
 
-    <!-- Virtual Scroll List -->
+    <!-- Scrollable Group List (no virtual scroll — expandable items need natural flow) -->
     <div
-      ref="virtualScrollRef"
-      class="space-y-3 max-h-[calc(100vh-320px)] overflow-auto pr-1"
+      ref="scrollContainer"
+      class="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1"
       @scroll="handleScroll"
     >
       <div
-        :style="{ height: virtualizer.getTotalSize() + 'px', position: 'relative' }"
+        v-for="group in allGroups"
+        :key="group.id"
+        class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden"
       >
-        <div
-          v-for="virtualRow in virtualizer.getVirtualItems()"
-          :key="String(virtualRow.key)"
-          :style="{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            transform: `translateY(${virtualRow.start}px)`,
-          }"
-        >
-          <div class="bg-gray-800 rounded-xl border border-gray-700 mb-3 overflow-hidden">
-            <!-- Group Header -->
-            <div class="flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-750 transition-colors" @click="toggleExpand(getGroupById(virtualRow.index).id)">
-              <!-- Checkbox -->
-              <label class="flex items-center" @click.stop>
-                <input
-                  type="checkbox"
-                  :checked="store.selectedGroupIds.has(getGroupById(virtualRow.index).id)"
-                  @change="store.toggleGroup(getGroupById(virtualRow.index).id)"
-                  class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer"
-                />
-              </label>
+        <!-- Group Header -->
+        <div class="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-gray-750 transition-colors" @click="toggleExpand(group.id)">
+          <label class="flex items-center" @click.stop>
+            <input
+              type="checkbox"
+              :checked="store.selectedGroupIds.has(group.id)"
+              @change="store.toggleGroup(group.id)"
+              class="w-3.5 h-3.5 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer"
+            />
+          </label>
 
-              <!-- Group Type Badge -->
-              <span
-                class="px-2 py-0.5 rounded text-xs font-medium shrink-0"
-                :class="
-                  getGroupById(virtualRow.index).group_type === 'CrossDedup'
-                    ? 'bg-purple-900/40 text-purple-400 border border-purple-800'
-                    : 'bg-cyan-900/40 text-cyan-400 border border-cyan-800'
-                "
-              >
-                {{ getGroupTypeLabel(getGroupById(virtualRow.index).group_type) }}
-              </span>
+          <span class="px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0"
+            :class="group.group_type === 'CrossDedup'
+              ? 'bg-purple-900/40 text-purple-400 border border-purple-800'
+              : 'bg-cyan-900/40 text-cyan-400 border border-cyan-800'">
+            {{ getGroupTypeLabel(group.group_type) }}
+          </span>
 
-              <!-- File Name -->
-              <div class="flex-1 min-w-0">
-                <div class="text-sm text-white font-medium truncate">
-                  {{ getGroupById(virtualRow.index).base_name }}
-                </div>
-              </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-xs text-white font-medium truncate">{{ group.base_name }}</div>
+          </div>
 
-              <!-- File Count & Size -->
-              <div class="text-right shrink-0">
-                <div class="text-sm text-white font-medium">
-                  {{ getGroupById(virtualRow.index).files.length }} 个文件
-                </div>
-                <div class="text-xs text-green-400">
-                  可释放 {{ formatSize(getGroupById(virtualRow.index).reclaimable_size) }}
-                </div>
-              </div>
+          <div class="text-right shrink-0">
+            <span class="text-xs text-white">{{ group.files.length }} 文件</span>
+            <span class="text-[10px] text-green-400 ml-1.5">可释放 {{ formatSize(group.reclaimable_size) }}</span>
+          </div>
 
-              <!-- Expand Arrow -->
-              <svg
-                class="w-4 h-4 text-gray-500 transition-transform duration-200 shrink-0"
-                :class="isExpanded(getGroupById(virtualRow.index).id) ? 'rotate-180' : ''"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-              </svg>
-            </div>
+          <svg class="w-3.5 h-3.5 text-gray-500 transition-transform duration-200 shrink-0"
+            :class="isExpanded(group.id) ? 'rotate-180' : ''"
+            fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
 
-            <!-- Expanded File List -->
-            <div
-              v-if="isExpanded(getGroupById(virtualRow.index).id)"
-              class="border-t border-gray-700 bg-gray-850"
-            >
-              <div
-                v-for="file in getGroupById(virtualRow.index).files"
-                :key="file.path"
-                class="flex items-center gap-3 px-4 py-2.5 border-b border-gray-700/50 last:border-b-0 hover:bg-gray-750 transition-colors"
-              >
-                <!-- Status Badge -->
-                <span
-                  class="px-1.5 py-0.5 rounded text-[10px] font-medium border shrink-0"
-                  :class="getStatusColor(file.status)"
-                >
-                  {{ getStatusLabel(file.status) }}
-                </span>
+        <!-- Expanded File List -->
+        <div v-if="isExpanded(group.id)" class="border-t border-gray-700">
+          <div
+            v-for="file in group.files"
+            :key="file.path"
+            class="flex items-center gap-2 px-3 py-1.5 border-b border-gray-700/50 last:border-b-0 hover:bg-gray-750 transition-colors"
+          >
+            <span class="px-1 py-0.5 rounded text-[9px] font-medium border shrink-0"
+              :class="getStatusColor(file.status)">
+              {{ getStatusLabel(file.status) }}
+            </span>
 
-                <!-- Path -->
-                <div class="flex-1 min-w-0">
-                  <div class="text-xs text-gray-300 font-mono truncate" :title="file.path">
-                    {{ file.path }}
-                  </div>
-                </div>
-
-                <!-- Source -->
-                <span class="text-[10px] text-gray-600 shrink-0">
-                  {{ file.source === 'WechatDir' ? '微信' : '归档' }}
-                </span>
-
-                <!-- Size -->
-                <div class="text-xs text-gray-400 shrink-0 w-16 text-right">
-                  {{ formatSize(file.size) }}
-                </div>
-
-                <!-- Modified -->
-                <div class="text-xs text-gray-500 shrink-0 w-28 text-right">
-                  {{ formatTimestamp(file.modified) }}
-                </div>
+            <div class="flex-1 min-w-0">
+              <div class="text-[11px] text-gray-300 font-mono truncate" :title="file.path">
+                {{ shortenPath(file.path) }}
               </div>
             </div>
+
+            <span class="text-[9px] text-gray-600 shrink-0">{{ file.source === 'WechatDir' ? '微信' : '归档' }}</span>
+            <div class="text-[11px] text-gray-400 shrink-0 w-14 text-right">{{ formatSize(file.size) }}</div>
+            <div class="text-[11px] text-gray-500 shrink-0 w-24 text-right">{{ formatTimestamp(file.modified) }}</div>
           </div>
         </div>
       </div>
 
-      <!-- Loading more indicator -->
-      <div v-if="loadingMore" class="text-center py-4 text-gray-500 text-sm">
-        <svg class="animate-spin h-4 w-4 inline-block mr-2" viewBox="0 0 24 24" fill="none">
+      <!-- Loading more -->
+      <div v-if="loadingMore" class="text-center py-3 text-gray-500 text-xs">
+        <svg class="animate-spin h-3.5 w-3.5 inline-block mr-1" viewBox="0 0 24 24" fill="none">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
         </svg>
@@ -486,12 +369,10 @@ onMounted(async () => {
     </div>
 
     <!-- Bottom Action Bar -->
-    <div
-      v-if="allGroups.length > 0"
-      class="sticky bottom-0 bg-gray-800/95 backdrop-blur border border-gray-700 rounded-xl p-4 flex items-center gap-4"
-    >
+    <div v-if="allGroups.length > 0"
+      class="flex-shrink-0 bg-gray-800/95 backdrop-blur border border-gray-700 rounded-lg p-3 flex items-center gap-4 mt-2">
       <div class="flex-1">
-        <span class="text-sm text-gray-400">
+        <span class="text-xs text-gray-400">
           已选 <span class="text-white font-medium">{{ totalSelectedFiles }}</span> 个文件,
           释放 <span class="text-green-400 font-medium">{{ formatSize(totalSelectedSize) }}</span>
         </span>
@@ -499,7 +380,7 @@ onMounted(async () => {
       <button
         @click="showCleanupModal = true"
         :disabled="totalSelectedFiles === 0"
-        class="px-6 py-2.5 bg-red-600 hover:bg-red-500 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-sm font-medium text-white transition-all duration-200 flex items-center gap-2"
+        class="px-5 py-2 bg-red-600 hover:bg-red-500 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-xs font-medium text-white transition-all"
       >
         🗑️ 清理到回收站
       </button>
@@ -507,36 +388,17 @@ onMounted(async () => {
 
     <!-- Cleanup Confirmation Modal -->
     <Teleport to="body">
-      <div
-        v-if="showCleanupModal"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-        @click.self="showCleanupModal = false"
-      >
-        <div class="bg-gray-800 border border-gray-700 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
-          <h3 class="text-lg font-semibold text-white mb-2">确认清理</h3>
+      <div v-if="showCleanupModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="showCleanupModal = false">
+        <div class="bg-gray-800 rounded-xl border border-gray-700 p-6 max-w-sm w-full mx-4">
+          <h3 class="text-lg font-semibold text-white mb-3">确认清理</h3>
           <p class="text-sm text-gray-400 mb-4">
-            即将删除 <span class="text-white font-medium">{{ totalSelectedFiles }}</span> 个冗余文件,
-            预计释放 <span class="text-green-400 font-medium">{{ formatSize(totalSelectedSize) }}</span> 空间。
-          </p>
-          <p class="text-xs text-gray-500 mb-5">
-            文件将移至回收站，如需恢复可从回收站还原。
+            确定要将选中的 <span class="text-white font-medium">{{ totalSelectedFiles }}</span> 个文件
+            {{ store.config?.trash_mode === 'delete' ? '永久删除' : '移到回收站' }}？
           </p>
           <div class="flex gap-3 justify-end">
-            <button
-              @click="showCleanupModal = false"
-              class="px-4 py-2 bg-gray-700 hover:bg-gray-600 border border-gray-600 rounded-lg text-sm text-gray-300 transition-colors"
-            >
-              取消
-            </button>
-            <button
-              @click="executeCleanup"
-              :disabled="cleaningUp"
-              class="px-4 py-2 bg-red-600 hover:bg-red-500 disabled:bg-red-800 rounded-lg text-sm text-white font-medium transition-colors flex items-center gap-2"
-            >
-              <svg v-if="cleaningUp" class="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
+            <button @click="showCleanupModal = false" class="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">取消</button>
+            <button @click="executeCleanup" :disabled="cleaningUp"
+              class="px-4 py-2 bg-red-600 hover:bg-red-500 disabled:bg-gray-700 rounded-lg text-sm font-medium text-white transition-all">
               {{ cleaningUp ? '清理中...' : '确认清理' }}
             </button>
           </div>
