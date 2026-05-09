@@ -12,6 +12,7 @@ export interface AppConfig {
   archive_dirs: string[]
   selected_account: string | null
   trash_mode: string
+  debug_enabled: boolean
 }
 
 export interface ScanProgress {

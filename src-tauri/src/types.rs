@@ -14,6 +14,12 @@ pub struct AppConfig {
     pub archive_dirs: Vec<PathBuf>,
     pub selected_account: Option<String>,
     pub trash_mode: TrashMode,
+    #[serde(default = "default_true")]
+    pub debug_enabled: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

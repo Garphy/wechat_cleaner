@@ -73,14 +73,7 @@ function debouncedSave() {
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(async () => {
     try {
-      const config: AppConfig = {
-        wechat_dir: wechatDir.value,
-        archive_dirs: archiveDirs.value.filter((d) => d.trim()),
-        selected_account: selectedAccount.value,
-        trash_mode: trashMode.value,
-      }
-      await invoke('save_config', { config })
-      store.config = config
+      await saveConfig()
     } catch (e) {
       console.error('Auto-save failed:', e)
     }
@@ -88,12 +81,13 @@ function debouncedSave() {
 }
 
 // Watch all config fields for auto-save
-watch([wechatDir, archiveDirs, selectedAccount, trashMode], debouncedSave, { deep: true })
+watch([wechatDir, archiveDirs, selectedAccount, trashMode, debugMode], debouncedSave, { deep: true })
 
 // ── Debug mode ────────────────────────────────────────────────────
 async function toggleDebug() {
   debugMode.value = !debugMode.value
-  await invoke('set_debug_mode', { enabled: debugMode.value })
+  // Save to config
+  await saveConfig()
 }
 
 async function openLogFile() {
@@ -106,11 +100,22 @@ async function clearLogFile() {
   await invoke('clear_debug_log')
 }
 
+async function saveConfig() {
+  const config: AppConfig = {
+    wechat_dir: wechatDir.value,
+    archive_dirs: archiveDirs.value.filter((d) => d.trim()),
+    selected_account: selectedAccount.value,
+    trash_mode: trashMode.value,
+    debug_enabled: debugMode.value,
+  }
+  await invoke('save_config', { config })
+  store.config = config
+}
+
 // ── Initialize ────────────────────────────────────────────────────
 onMounted(async () => {
   try {
-    // Load debug state
-    debugMode.value = await invoke<boolean>('get_debug_mode')
+    // Load log path
     logPath.value = await invoke<string>('get_log_path')
 
     const detectedAccounts = await invoke<WechatAccount[]>('detect_wechat_paths')
@@ -125,7 +130,11 @@ onMounted(async () => {
       archiveDirs.value = existingConfig.archive_dirs?.length > 0 ? existingConfig.archive_dirs : ['']
       selectedAccount.value = existingConfig.selected_account
       trashMode.value = (existingConfig.trash_mode as 'trash' | 'delete') || 'trash'
+      debugMode.value = existingConfig.debug_enabled ?? true
     }
+
+    // Sync debug mode to runtime
+    await invoke('set_debug_mode', { enabled: debugMode.value })
 
     if (detectedAccounts.length > 0 && !wechatDir.value) {
       const firstAccount = detectedAccounts[0]!
@@ -150,14 +159,7 @@ async function startScan() {
       return
     }
 
-    const config: AppConfig = {
-      wechat_dir: wechatDir.value,
-      archive_dirs: archiveDirs.value.filter((d) => d.trim()),
-      selected_account: selectedAccount.value,
-      trash_mode: trashMode.value,
-    }
-    await invoke('save_config', { config })
-    store.config = config
+    await saveConfig()
     router.push('/scan')
   } catch (e) {
     error.value = String(e)

@@ -53,6 +53,7 @@ pub fn load_config() -> crate::types::AppConfig {
         archive_dirs: vec![],
         selected_account: None,
         trash_mode: crate::types::TrashMode::Trash,
+        debug_enabled: true,
     }
 }
 
