@@ -76,7 +76,12 @@ onMounted(async () => {
     }
   }, 500)
 
-  // Start the scan (backend skips if already complete, preserving progress for back navigation)
+  // If already complete (back navigation), skip start_scan — polling will pick up existing state
+  if (store.progress?.is_complete) {
+    return
+  }
+
+  // Start a new scan
   try {
     if (store.config) {
       await invoke('start_scan', {

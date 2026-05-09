@@ -22,12 +22,10 @@ const showReport = ref(false)
 
 const allGroups = ref<FileGroup[]>([])
 
-const totalFiles = computed(() => allGroups.value.reduce((acc, g) => acc + g.files.length, 0))
-const totalSize = computed(() => allGroups.value.reduce((acc, g) => acc + g.total_size, 0))
-const redundantFiles = computed(() =>
-  allGroups.value.reduce((acc, g) => acc + g.files.filter((f) => f.status === 'Remove').length, 0)
-)
-const redundantSize = computed(() => allGroups.value.reduce((acc, g) => acc + g.reclaimable_size, 0))
+const totalFiles = computed(() => store.scanResult?.total_files ?? 0)
+const totalSize = computed(() => store.scanResult?.total_size ?? 0)
+const redundantFiles = computed(() => store.scanResult?.redundant_files ?? 0)
+const redundantSize = computed(() => store.scanResult?.redundant_size ?? 0)
 const durationMs = computed(() => store.scanResult?.duration_ms ?? 0)
 const selectedFileCount = computed(() => store.getSelectedFileCount())
 const selectedFilesToDelete = computed(() => store.getSelectedFiles(allGroups.value))
@@ -172,13 +170,7 @@ function handleScroll() {
 
 // ── Init ────────────────────────────────────────────────────────
 onMounted(async () => {
-  if (store.scanResult?.groups && store.scanResult.groups.length > 0) {
-    allGroups.value = store.scanResult.groups
-    store.initFileSelection(store.scanResult.groups)
-    loading.value = false
-  } else {
-    loadResults()
-  }
+  loadResults()
 })
 </script>
 

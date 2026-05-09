@@ -62,14 +62,6 @@ pub fn validate_directory(path: String) -> Result<bool, String> {
 
 #[tauri::command]
 pub fn start_scan(config: ScanConfig, state: tauri::State<'_, AppState>) -> Result<(), String> {
-    // Skip if scan is already complete — preserves progress/results for back navigation
-    {
-        let progress = state.scan_progress.lock().map_err(|e| e.to_string())?;
-        if progress.is_complete {
-            return Ok(());
-        }
-    }
-
     // Reset state
     state.scan_cancel.store(false, Ordering::SeqCst);
     state.scan_pause.store(false, Ordering::SeqCst);
