@@ -7,6 +7,8 @@ pub mod commands;
 pub mod error;
 pub mod debug;
 
+use tauri::Manager;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -33,10 +35,23 @@ pub fn run() {
             commands::clear_debug_log,
             commands::debug_get_scan_result_state,
         ])
-        .setup(|_app| {
-            // Initialize debug log on startup
+        .setup(|app| {
+            // Initialize debug log
             debug::init_debug_log();
-            debug::log("Application started");
+
+            // Load config and check debug mode
+            let config = crate::config::wechat::load_config();
+            debug::set_debug_enabled(config.debug_enabled);
+            debug::log(&format!("Application started. debug_enabled={}", config.debug_enabled));
+
+            // Auto-open DevTools if debug mode is enabled
+            if config.debug_enabled {
+                if let Some(window) = app.get_webview_window("main") {
+                    window.open_devtools();
+                    debug::log("DevTools opened (debug mode enabled)");
+                }
+            }
+
             Ok(())
         })
         .run(tauri::generate_context!())
