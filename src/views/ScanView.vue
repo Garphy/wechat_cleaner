@@ -58,22 +58,16 @@ onMounted(async () => {
 
       // Check if scan is complete
       if (p.phase === 'Deduplicating' && p.scanned_files >= p.total_files && p.total_files > 0) {
-        if (!completed.value) {
-          completed.value = true
-          notification.value = '扫描完成！正在加载结果...'
-          clearInterval(polling.value!)
+        completed.value = true
+        notification.value = '扫描完成！'
+        clearInterval(polling.value!)
 
-          // Load result and navigate
-          try {
-            const result = await invoke<any>('get_scan_result')
-            store.scanResult = result
-            // Auto-navigate to results after a brief delay
-            setTimeout(() => {
-              router.push('/results')
-            }, 1500)
-          } catch (e) {
-            error.value = String(e)
-          }
+        // Load result into store
+        try {
+          const result = await invoke<any>('get_scan_result')
+          store.scanResult = result
+        } catch (e) {
+          error.value = String(e)
         }
       }
     } catch (e) {
@@ -239,6 +233,13 @@ async function cancelScan() {
 
     <!-- Control Buttons -->
     <div class="flex items-center gap-3 justify-center">
+      <button
+        v-if="completed && store.scanResult"
+        @click="router.push('/results')"
+        class="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium text-white transition-all duration-200 flex items-center gap-2"
+      >
+        📊 查看结果
+      </button>
       <button
         v-if="!completed"
         @click="pauseResume"

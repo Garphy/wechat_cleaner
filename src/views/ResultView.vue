@@ -215,8 +215,19 @@ async function executeCleanup() {
   }
 }
 
-onMounted(() => {
-  loadResults()
+onMounted(async () => {
+  // First try to load from store (set by ScanView)
+  if (store.scanResult?.groups && store.scanResult.groups.length > 0) {
+    allGroups.value = store.scanResult.groups
+    loading.value = false
+    // Auto-select all Remove status groups
+    store.scanResult.groups.forEach((g: FileGroup) => {
+      store.selectedGroupIds.add(g.id)
+    })
+  } else {
+    // Fallback: load from backend
+    loadResults()
+  }
 })
 </script>
 
