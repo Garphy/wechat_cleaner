@@ -30,9 +30,10 @@ pub fn detect_wechat_accounts() -> Vec<WechatAccount> {
 }
 
 pub fn get_config_path() -> PathBuf {
-    dirs::config_dir()
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
         .unwrap_or_else(|| dirs::home_dir().unwrap_or_default())
-        .join("wechat-cleaner")
         .join("config.json")
 }
 

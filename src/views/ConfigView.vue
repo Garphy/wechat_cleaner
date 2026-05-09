@@ -90,9 +90,11 @@ async function toggleDebug() {
   await saveConfig()
 }
 
-async function openLogFile() {
-  if (logPath.value) {
-    await invoke('open', { url: logPath.value })
+async function openLogDir() {
+  // Extract directory from log path
+  const dir = logPath.value.substring(0, logPath.value.lastIndexOf('\\') || logPath.value.lastIndexOf('/'))
+  if (dir) {
+    await invoke('open', { url: dir })
   }
 }
 
@@ -345,10 +347,10 @@ async function startScan() {
             <span class="text-xs text-gray-400 font-mono truncate">{{ logPath }}</span>
             <div class="flex gap-2 shrink-0 ml-2">
               <button
-                @click="openLogFile"
+                @click="openLogDir"
                 class="px-2 py-1 bg-gray-600 hover:bg-gray-500 rounded text-xs text-gray-300 transition-colors"
               >
-                📄 打开日志
+                📁 打开目录
               </button>
               <button
                 @click="clearLogFile"

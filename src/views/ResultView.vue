@@ -137,7 +137,7 @@ async function loadResults(append = false) {
   try {
     const result = await invoke<any>('get_paged_results', {
       page: currentPage.value,
-      pageSize: pageSize,
+      page_size: pageSize,
       sort: sortField.value,
       order: sortOrder.value,
     })

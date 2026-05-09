@@ -8,9 +8,10 @@ static LOG_FILE: Lazy<Mutex<Option<std::fs::File>>> = Lazy::new(|| Mutex::new(No
 static DEBUG_ENABLED: Lazy<std::sync::atomic::AtomicBool> = Lazy::new(|| std::sync::atomic::AtomicBool::new(false));
 
 pub fn get_log_dir() -> PathBuf {
-    dirs::config_dir()
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
         .unwrap_or_else(|| dirs::home_dir().unwrap_or_default())
-        .join("wechat-cleaner")
 }
 
 pub fn get_log_path() -> PathBuf {
