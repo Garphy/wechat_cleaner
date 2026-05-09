@@ -31,6 +31,7 @@ pub fn run() {
             commands::get_debug_mode,
             commands::get_log_path,
             commands::clear_debug_log,
+            commands::debug_get_scan_result_state,
         ])
         .setup(|_app| {
             // Initialize debug log on startup

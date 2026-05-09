@@ -62,13 +62,18 @@ onMounted(async () => {
         notification.value = '扫描完成！'
         clearInterval(polling.value!)
 
-        // Load result into store
-        try {
-          const result = await invoke<any>('get_scan_result')
-          store.scanResult = result
-        } catch (e) {
-          error.value = String(e)
-        }
+          // Load result into store
+          try {
+            const result = await invoke<any>('get_scan_result')
+            console.log('[DEBUG] get_scan_result returned:', result)
+            console.log('[DEBUG] groups count:', result?.groups?.length)
+            store.scanResult = result
+            // Debug: log state
+            await invoke('debug_get_scan_result_state')
+          } catch (e) {
+            error.value = String(e)
+            console.error('[DEBUG] get_scan_result error:', e)
+          }
       }
     } catch (e) {
       error.value = String(e)

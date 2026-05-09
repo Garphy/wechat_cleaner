@@ -216,8 +216,12 @@ async function executeCleanup() {
 }
 
 onMounted(async () => {
+  console.log('[DEBUG] ResultView onMounted. store.scanResult:', store.scanResult)
+  console.log('[DEBUG] groups:', store.scanResult?.groups?.length)
+
   // First try to load from store (set by ScanView)
   if (store.scanResult?.groups && store.scanResult.groups.length > 0) {
+    console.log('[DEBUG] Using store data, groups count:', store.scanResult.groups.length)
     allGroups.value = store.scanResult.groups
     loading.value = false
     // Auto-select all Remove status groups
@@ -226,6 +230,7 @@ onMounted(async () => {
     })
   } else {
     // Fallback: load from backend
+    console.log('[DEBUG] No store data, falling back to loadResults()')
     loadResults()
   }
 })

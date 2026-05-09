@@ -134,11 +134,19 @@ pub fn cancel_scan(state: tauri::State<'_, AppState>) -> Result<(), String> {
 
 #[tauri::command]
 pub fn get_scan_result(state: tauri::State<'_, AppState>) -> Result<Option<ScanResult>, String> {
-    state
+    let result = state
         .scan_result
         .lock()
         .map(|r| r.clone())
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    crate::debug::log(&format!(
+        "get_scan_result called. has_result={}, groups={}",
+        result.is_some(),
+        result.as_ref().map(|r| r.groups.len()).unwrap_or(0)
+    ));
+
+    Ok(result)
 }
 
 #[tauri::command]
@@ -194,6 +202,25 @@ pub fn get_paged_results(
         page,
         page_size,
     })
+}
+
+#[tauri::command]
+pub fn debug_get_scan_result_state(state: tauri::State<'_, AppState>) -> Result<String, String> {
+    let result = state
+        .scan_result
+        .lock()
+        .map_err(|e| e.to_string())?;
+
+    let info = match result.as_ref() {
+        Some(r) => format!(
+            "Some ScanResult: groups={}, redundant_files={}, redundant_size={}",
+            r.groups.len(), r.redundant_files, r.redundant_size
+        ),
+        None => "None".to_string(),
+    };
+
+    crate::debug::log(&format!("debug_get_scan_result_state: {}", info));
+    Ok(info)
 }
 
 // ── Cleanup Commands ────────────────────────────────────────────────
