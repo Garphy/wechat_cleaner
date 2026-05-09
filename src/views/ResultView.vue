@@ -264,6 +264,7 @@ onMounted(async () => {
 
       <div class="flex-1" />
 
+      <button @click="store.initFileSelection(allGroups)" class="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs text-gray-400 hover:bg-gray-700">恢复默认</button>
       <button @click="store.selectAllFiles(allGroups)" class="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs text-gray-400 hover:bg-gray-700">全选删除</button>
       <button @click="store.deselectAllFiles()" class="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs text-gray-400 hover:bg-gray-700">全部保留</button>
     </div>
