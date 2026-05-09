@@ -31,7 +31,7 @@ async function validateDir(path: string): Promise<boolean> {
 async function validateAllDirs() {
   const errors: Record<number, string> = {}
   for (let i = 0; i < archiveDirs.value.length; i++) {
-    const dir = archiveDirs.value[i].trim()
+    const dir = archiveDirs.value[i]?.trim() ?? ''
     if (dir && !(await validateDir(dir))) {
       errors[i] = '目录不存在或无效'
     }
