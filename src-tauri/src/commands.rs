@@ -54,6 +54,12 @@ pub fn save_config(config: AppConfig) -> Result<(), String> {
 // ── Scan Commands ───────────────────────────────────────────────────
 
 #[tauri::command]
+pub fn validate_directory(path: String) -> Result<bool, String> {
+    let p = std::path::Path::new(&path);
+    Ok(p.exists() && p.is_dir())
+}
+
+#[tauri::command]
 pub fn start_scan(config: ScanConfig, state: tauri::State<'_, AppState>) -> Result<(), String> {
     // Reset state
     state.scan_cancel.store(false, Ordering::SeqCst);

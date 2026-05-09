@@ -10,11 +10,13 @@ pub mod error;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(commands::AppState::default())
         .invoke_handler(tauri::generate_handler![
             commands::detect_wechat_paths,
             commands::get_config,
             commands::save_config,
+            commands::validate_directory,
             commands::start_scan,
             commands::get_scan_progress,
             commands::pause_scan,
