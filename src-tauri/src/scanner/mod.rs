@@ -31,7 +31,7 @@ impl ScanEngine {
         let start_time = Instant::now();
         let walker = FileWalker::new();
 
-        crate::debug::log(&format!("Scan started. wechat_dir={}, archive_dirs={:?}", config.wechat_dir, config.archive_dirs));
+        crate::debug::log(&format!("Scan started. wechat_dir={}, archive_dirs={:?}", config.wechat_dir.display(), config.archive_dirs));
 
         // Phase 1: Walking
         {
