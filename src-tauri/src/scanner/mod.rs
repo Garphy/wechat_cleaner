@@ -105,11 +105,11 @@ impl ScanEngine {
         let archive_hashes = hash_files_parallel(&archive_files);
         crate::debug::log(&format!("Archive hashes computed: {}", archive_hashes.len()));
 
-        // Update scanned_files count
+        // Update scanned_files count (don't set to total_files yet — dedup phase still pending)
         {
             let mut p = progress.lock().unwrap();
             p.scanned_files = wechat_hashes.len() as u64 + archive_hashes.len() as u64;
-            p.current_path = "Hashing complete".to_string();
+            p.current_path = "Hashing complete, starting dedup...".to_string();
         }
 
         if cancel.load(Ordering::Relaxed) {
@@ -169,6 +169,7 @@ impl ScanEngine {
             p.scanned_files = p.total_files;
             p.redundant_size = redundant_size;
             p.current_path = "Scan complete".to_string();
+            p.is_complete = true;
         }
 
         crate::debug::log(&format!(

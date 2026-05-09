@@ -112,6 +112,7 @@ async function loadResults(append = false) {
     const newGroups: FileGroup[] = result.groups
     if (append) {
       allGroups.value = [...allGroups.value, ...newGroups]
+      store.appendFileSelection(newGroups)
     } else {
       allGroups.value = newGroups
       store.initFileSelection(newGroups)

@@ -24,6 +24,7 @@ export interface ScanProgress {
   phase: string
   is_paused: boolean
   is_cancelled: boolean
+  is_complete: boolean
 }
 
 export interface FileEntry {
@@ -80,6 +81,17 @@ export const useAppStore = defineStore('app', () => {
   // Initialize selection: all 'Remove' files are selected by default
   function initFileSelection(groups: FileGroup[]) {
     selectedFiles.value = new Set()
+    groups.forEach((g) => {
+      g.files.forEach((f) => {
+        if (f.status === 'Remove') {
+          selectedFiles.value.add(f.path)
+        }
+      })
+    })
+  }
+
+  // Append selection for newly loaded groups (infinite scroll)
+  function appendFileSelection(groups: FileGroup[]) {
     groups.forEach((g) => {
       g.files.forEach((f) => {
         if (f.status === 'Remove') {
@@ -149,6 +161,7 @@ export const useAppStore = defineStore('app', () => {
     isScanning,
     selectedFiles,
     initFileSelection,
+    appendFileSelection,
     toggleFile,
     isFileSelected,
     selectAllFiles,

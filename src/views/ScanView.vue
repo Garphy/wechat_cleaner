@@ -28,6 +28,7 @@ const percentage = computed(() => {
 
 const currentPhaseIndex = computed(() => {
   if (!progress.value) return -1
+  if (progress.value.is_complete) return phases.length // all phases completed
   return phases.indexOf(progress.value.phase)
 })
 
@@ -56,31 +57,26 @@ onMounted(async () => {
       const p = await invoke<ScanProgress>('get_scan_progress')
       store.progress = p
 
-      // Check if scan is complete
-      if (p.phase === 'Deduplicating' && p.scanned_files >= p.total_files && p.total_files > 0) {
+      // Check if scan is complete (use is_complete flag from backend)
+      if (p.is_complete) {
         completed.value = true
         notification.value = '扫描完成！'
         clearInterval(polling.value!)
 
-          // Load result into store
-          try {
-            const result = await invoke<any>('get_scan_result')
-            console.log('[DEBUG] get_scan_result returned:', result)
-            console.log('[DEBUG] groups count:', result?.groups?.length)
-            store.scanResult = result
-            // Debug: log state
-            await invoke('debug_get_scan_result_state')
-          } catch (e) {
-            error.value = String(e)
-            console.error('[DEBUG] get_scan_result error:', e)
-          }
+        // Load result into store
+        try {
+          const result = await invoke<any>('get_scan_result')
+          store.scanResult = result
+        } catch (e) {
+          error.value = String(e)
+        }
       }
     } catch (e) {
       error.value = String(e)
     }
   }, 500)
 
-  // Start the scan
+  // Start the scan (backend skips if already complete, preserving progress for back navigation)
   try {
     if (store.config) {
       await invoke('start_scan', {
@@ -90,9 +86,7 @@ onMounted(async () => {
         },
       })
     } else {
-      // Try to get config from backend
-      const { invoke: inv } = await import('@tauri-apps/api/core')
-      const cfg = await inv<any>('get_config')
+      const cfg = await invoke<any>('get_config')
       await invoke('start_scan', {
         config: {
           wechat_dir: cfg.wechat_dir,

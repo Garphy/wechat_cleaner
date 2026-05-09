@@ -79,6 +79,8 @@ pub struct ScanProgress {
     pub phase: ScanPhase,
     pub is_paused: bool,
     pub is_cancelled: bool,
+    #[serde(default)]
+    pub is_complete: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
