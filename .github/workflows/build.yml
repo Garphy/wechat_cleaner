@@ -41,7 +41,7 @@ jobs:
         run: cargo binstall tauri-cli@^2 -y
 
       - name: Build Tauri app
-        run: cargo tauri build
+        run: cargo tauri build --bundles nsis
 
       - name: Upload NSIS installer
         uses: actions/upload-artifact@v4
@@ -61,5 +61,5 @@ jobs:
         with:
           files: |
             src-tauri/target/release/bundle/nsis/*-setup.exe
-            src-tauri/target/release/bundle/msi/*.msi
+            # src-tauri/target/release/bundle/msi/*.msi
           generate_release_notes: true
