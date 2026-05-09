@@ -235,3 +235,25 @@ pub fn execute_cleanup(
 pub fn check_wechat_running() -> bool {
     trash::is_wechat_running()
 }
+
+// ── Debug Commands ────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn set_debug_mode(enabled: bool) {
+    crate::debug::set_debug_enabled(enabled);
+}
+
+#[tauri::command]
+pub fn get_debug_mode() -> bool {
+    crate::debug::is_debug_enabled()
+}
+
+#[tauri::command]
+pub fn get_log_path() -> String {
+    crate::debug::get_log_path().to_string_lossy().to_string()
+}
+
+#[tauri::command]
+pub fn clear_debug_log() {
+    crate::debug::clear_log();
+}

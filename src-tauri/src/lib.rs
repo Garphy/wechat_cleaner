@@ -5,6 +5,7 @@ pub mod config;
 pub mod platform;
 pub mod commands;
 pub mod error;
+pub mod debug;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -26,7 +27,17 @@ pub fn run() {
             commands::get_paged_results,
             commands::execute_cleanup,
             commands::check_wechat_running,
+            commands::set_debug_mode,
+            commands::get_debug_mode,
+            commands::get_log_path,
+            commands::clear_debug_log,
         ])
+        .setup(|_app| {
+            // Initialize debug log on startup
+            debug::init_debug_log();
+            debug::log("Application started");
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

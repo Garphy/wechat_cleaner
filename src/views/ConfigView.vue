@@ -17,6 +17,8 @@ const selectedAccount = ref<string | null>(null)
 const saving = ref(false)
 const trashMode = ref<'trash' | 'delete'>('trash')
 const dirErrors = ref<Record<number, string>>({})
+const debugMode = ref(false)
+const logPath = ref('')
 
 // ── Directory validation ──────────────────────────────────────────
 async function validateDir(path: string): Promise<boolean> {
@@ -88,9 +90,29 @@ function debouncedSave() {
 // Watch all config fields for auto-save
 watch([wechatDir, archiveDirs, selectedAccount, trashMode], debouncedSave, { deep: true })
 
+// ── Debug mode ────────────────────────────────────────────────────
+async function toggleDebug() {
+  debugMode.value = !debugMode.value
+  await invoke('set_debug_mode', { enabled: debugMode.value })
+}
+
+async function openLogFile() {
+  if (logPath.value) {
+    await invoke('open', { url: logPath.value })
+  }
+}
+
+async function clearLogFile() {
+  await invoke('clear_debug_log')
+}
+
 // ── Initialize ────────────────────────────────────────────────────
 onMounted(async () => {
   try {
+    // Load debug state
+    debugMode.value = await invoke<boolean>('get_debug_mode')
+    logPath.value = await invoke<string>('get_log_path')
+
     const detectedAccounts = await invoke<WechatAccount[]>('detect_wechat_paths')
     accounts.value = detectedAccounts
     store.accounts = detectedAccounts
@@ -290,6 +312,50 @@ async function startScan() {
               <div class="text-xs text-gray-400">文件将被永久删除，无法恢复</div>
             </div>
           </label>
+        </div>
+      </div>
+
+      <!-- Debug Mode -->
+      <div class="bg-gray-800 rounded-xl border border-gray-700 p-5">
+        <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+          <span class="text-xl">🐛</span> 调试模式
+        </h2>
+
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <div class="text-sm text-white font-medium">启用调试日志</div>
+            <div class="text-xs text-gray-400">记录详细日志到文件，便于排查问题</div>
+          </div>
+          <button
+            @click="toggleDebug"
+            class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none"
+            :class="debugMode ? 'bg-blue-600' : 'bg-gray-600'"
+          >
+            <span
+              class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200"
+              :class="debugMode ? 'translate-x-6' : 'translate-x-1'"
+            />
+          </button>
+        </div>
+
+        <div v-if="debugMode" class="bg-gray-700/50 rounded-lg p-3 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-gray-400 font-mono truncate">{{ logPath }}</span>
+            <div class="flex gap-2 shrink-0 ml-2">
+              <button
+                @click="openLogFile"
+                class="px-2 py-1 bg-gray-600 hover:bg-gray-500 rounded text-xs text-gray-300 transition-colors"
+              >
+                📄 打开日志
+              </button>
+              <button
+                @click="clearLogFile"
+                class="px-2 py-1 bg-gray-700 hover:bg-red-900/50 border border-gray-600 hover:border-red-500 rounded text-xs text-gray-400 hover:text-red-400 transition-colors"
+              >
+                🗑️ 清空
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 

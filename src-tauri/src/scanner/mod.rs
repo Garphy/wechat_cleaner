@@ -31,6 +31,8 @@ impl ScanEngine {
         let start_time = Instant::now();
         let walker = FileWalker::new();
 
+        crate::debug::log(&format!("Scan started. wechat_dir={}, archive_dirs={:?}", config.wechat_dir, config.archive_dirs));
+
         // Phase 1: Walking
         {
             let mut p = progress.lock().unwrap();
@@ -44,6 +46,7 @@ impl ScanEngine {
 
         // Walk wechat directory
         let wechat_files = walker.walk(&config.wechat_dir);
+        crate::debug::log(&format!("WeChat files found: {}", wechat_files.len()));
 
         if cancel.load(Ordering::Relaxed) {
             return Self::make_result(Vec::new(), 0, 0, start_time);
@@ -64,6 +67,7 @@ impl ScanEngine {
         let total_files = (wechat_files.len() + archive_files.len()) as u64;
         let total_size: u64 = wechat_files.iter().map(|f| f.size).sum::<u64>()
             + archive_files.iter().map(|f| f.size).sum::<u64>();
+        crate::debug::log(&format!("Walking complete. total_files={}, total_size={}", total_files, total_size));
         {
             let mut p = progress.lock().unwrap();
             p.total_files = total_files;
@@ -86,6 +90,7 @@ impl ScanEngine {
 
         // Hash wechat files in parallel
         let wechat_hashes = hash_files_parallel(&wechat_files);
+        crate::debug::log(&format!("WeChat hashes computed: {}", wechat_hashes.len()));
 
         if cancel.load(Ordering::Relaxed) {
             return Self::make_result(Vec::new(), 0, 0, start_time);
@@ -98,6 +103,7 @@ impl ScanEngine {
             p.current_path = "Hashing archive files...".to_string();
         }
         let archive_hashes = hash_files_parallel(&archive_files);
+        crate::debug::log(&format!("Archive hashes computed: {}", archive_hashes.len()));
 
         // Update scanned_files count
         {
@@ -130,6 +136,7 @@ impl ScanEngine {
 
         // Cross-directory dedup
         let mut groups = find_cross_dedup(&wechat_with_hashes, &archive_files);
+        crate::debug::log(&format!("Cross-dedup groups found: {}", groups.len()));
 
         if cancel.load(Ordering::Relaxed) {
             return Self::make_result(Vec::new(), 0, 0, start_time);
@@ -142,6 +149,7 @@ impl ScanEngine {
             p.current_path = "Version convergence analysis...".to_string();
         }
         let version_groups = find_version_groups(&wechat_with_hashes);
+        crate::debug::log(&format!("Version groups found: {}", version_groups.len()));
         groups.extend(version_groups);
 
         // Compute stats
@@ -155,11 +163,18 @@ impl ScanEngine {
             .map(|g| g.reclaimable_size)
             .sum();
 
+        // Mark scan as complete
         {
             let mut p = progress.lock().unwrap();
+            p.scanned_files = p.total_files;
             p.redundant_size = redundant_size;
             p.current_path = "Scan complete".to_string();
         }
+
+        crate::debug::log(&format!(
+            "Scan complete. groups={}, redundant_files={}, redundant_size={}, duration={:?}",
+            groups.len(), redundant_files, redundant_size, start_time.elapsed()
+        ));
 
         Self::make_result(groups, redundant_files, redundant_size, start_time)
     }
