@@ -2,8 +2,8 @@
 name = "wechat-cleaner"
 version = "0.1.1"
 description = "A WeChat cache cleaner"
-authors = ["you"]
-edition = "2021"
+authors = ["Garphy"]
+edition = "2026"
 
 [lib]
 name = "wechat_cleaner_lib"
