@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicegui-dev/nicegui/refs/heads/main/tauri/tauri-conf-schema.json",
   "productName": "wechat-cleaner",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "com.garphy.wechat-cleaner",
   "build": {
     "beforeDevCommand": "npm run dev",
