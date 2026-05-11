@@ -168,8 +168,14 @@ pub fn get_paged_results(
     let mut groups = scan.groups.clone();
 
     // Sort
-    let sort_key = sort.unwrap_or_else(|| "size".to_string());
+    let sort_key = sort.clone().unwrap_or_else(|| "size".to_string());
     let ascending = order.as_deref() != Some("desc");
+
+    crate::debug::log(&format!(
+        "get_paged_results: page={}, pageSize={}, sort={:?}, order={:?}, ascending={}, groups_before_sort={}",
+        page, page_size, sort, order, ascending, groups.len()
+    ));
+
     groups.sort_by(|a, b| {
         let cmp = match sort_key.as_str() {
             "name" => a.base_name.cmp(&b.base_name),
@@ -188,6 +194,10 @@ pub fn get_paged_results(
             cmp.reverse()
         }
     });
+
+    // Log first 3 groups after sort for debugging
+    let top3: Vec<u64> = groups.iter().take(3).map(|g| g.reclaimable_size).collect();
+    crate::debug::log(&format!("get_paged_results: after sort, top3 reclaimable_sizes={:?}", top3));
 
     let total = groups.len();
     let start = (page * page_size) as usize;

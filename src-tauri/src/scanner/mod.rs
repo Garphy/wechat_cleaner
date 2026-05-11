@@ -3,7 +3,6 @@ pub mod hash;
 pub mod walker;
 
 use crate::scanner::dedup::{find_cross_dedup, find_version_groups};
-use crate::scanner::hash::hash_files_parallel;
 use crate::scanner::walker::{FileWalker, ScannedFile};
 use crate::types::*;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -17,11 +16,9 @@ impl ScanEngine {
     ///
     /// 1. Walk wechat_dir → get wechat_files
     /// 2. Walk each archive_dir → get archive_files
-    /// 3. Hash wechat_files (parallel)
-    /// 4. Hash archive_files (parallel)
-    /// 5. find_cross_dedup(wechat_files, archive_files)
-    /// 6. find_version_groups(wechat_files)
-    /// 7. Merge all groups, compute stats, return ScanResult
+    /// 3. find_cross_dedup(wechat_files, archive_files) — hashes on-demand via size→partial→full filter
+    /// 4. find_version_groups(wechat_files)
+    /// 5. Merge all groups, compute stats, return ScanResult
     pub fn start_scan(
         config: ScanConfig,
         progress: Arc<Mutex<ScanProgress>>,
@@ -72,8 +69,8 @@ impl ScanEngine {
             let mut p = progress.lock().unwrap();
             p.total_files = total_files;
             p.total_size = total_size;
-            p.scanned_files = 0;
-            p.current_path = "Walking complete".to_string();
+            p.scanned_files = total_files; // walking is done, hashing happens on-demand in dedup
+            p.current_path = "Walking complete, starting dedup...".to_string();
         }
 
         if cancel.load(Ordering::Relaxed) {
@@ -81,61 +78,17 @@ impl ScanEngine {
         }
         Self::check_pause(&pause);
 
-        // Phase 2: Hashing
-        {
-            let mut p = progress.lock().unwrap();
-            p.phase = ScanPhase::Hashing;
-            p.current_path = "Hashing WeChat files...".to_string();
-        }
-
-        // Hash wechat files in parallel
-        let wechat_hashes = hash_files_parallel(&wechat_files);
-        crate::debug::log(&format!("WeChat hashes computed: {}", wechat_hashes.len()));
-
-        if cancel.load(Ordering::Relaxed) {
-            return Self::make_result(Vec::new(), 0, 0, start_time);
-        }
-        Self::check_pause(&pause);
-
-        // Hash archive files in parallel
-        {
-            let mut p = progress.lock().unwrap();
-            p.current_path = "Hashing archive files...".to_string();
-        }
-        let archive_hashes = hash_files_parallel(&archive_files);
-        crate::debug::log(&format!("Archive hashes computed: {}", archive_hashes.len()));
-
-        // Update scanned_files count (don't set to total_files yet — dedup phase still pending)
-        {
-            let mut p = progress.lock().unwrap();
-            p.scanned_files = wechat_hashes.len() as u64 + archive_hashes.len() as u64;
-            p.current_path = "Hashing complete, starting dedup...".to_string();
-        }
-
-        if cancel.load(Ordering::Relaxed) {
-            return Self::make_result(Vec::new(), 0, 0, start_time);
-        }
-        Self::check_pause(&pause);
-
-        // Phase 3: Deduplicating
+        // Phase 2: Deduplicating
+        // No upfront full hashing — find_cross_dedup does size → partial_hash → full_hash filtering,
+        // only computing full SHA-256 for the small subset of files that match.
         {
             let mut p = progress.lock().unwrap();
             p.phase = ScanPhase::Deduplicating;
             p.current_path = "Cross-directory deduplication...".to_string();
         }
 
-        // Build ScannedFile lists with hashes attached
-        // We need to associate hashes with files for the dedup functions
-        let wechat_with_hashes: Vec<ScannedFile> = wechat_files
-            .iter()
-            .map(|f| {
-                let sf = f.clone();
-                sf
-            })
-            .collect();
-
-        // Cross-directory dedup
-        let mut groups = find_cross_dedup(&wechat_with_hashes, &archive_files);
+        crate::debug::log("Starting cross-directory dedup (on-demand hashing)...");
+        let mut groups = find_cross_dedup(&wechat_files, &archive_files);
         crate::debug::log(&format!("Cross-dedup groups found: {}", groups.len()));
 
         if cancel.load(Ordering::Relaxed) {
@@ -143,12 +96,13 @@ impl ScanEngine {
         }
         Self::check_pause(&pause);
 
-        // Version convergence
+        // Version convergence (no hashing needed — uses filename pattern + modified time)
         {
             let mut p = progress.lock().unwrap();
             p.current_path = "Version convergence analysis...".to_string();
         }
-        let version_groups = find_version_groups(&wechat_with_hashes);
+        crate::debug::log("Starting version convergence analysis...");
+        let version_groups = find_version_groups(&wechat_files);
         crate::debug::log(&format!("Version groups found: {}", version_groups.len()));
         groups.extend(version_groups);
 
