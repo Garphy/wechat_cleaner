@@ -183,10 +183,9 @@ pub fn get_paged_results(
                 .files
                 .first()
                 .map(|f| f.modified)
-                .cmp(&b.files.first().map(|f| f.modified))
-                .reverse(),
-            "count" => a.files.len().cmp(&b.files.len()).reverse(),
-            _ => a.reclaimable_size.cmp(&b.reclaimable_size).reverse(),
+                .cmp(&b.files.first().map(|f| f.modified)),
+            "count" => a.files.len().cmp(&b.files.len()),
+            _ => a.reclaimable_size.cmp(&b.reclaimable_size),
         };
         if ascending {
             cmp

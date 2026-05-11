@@ -88,6 +88,7 @@ onMounted(async () => {
         config: {
           wechat_dir: store.config.wechat_dir,
           archive_dirs: store.config.archive_dirs,
+          date_range: store.config.date_range,
         },
       })
     } else {
@@ -96,6 +97,7 @@ onMounted(async () => {
         config: {
           wechat_dir: cfg.wechat_dir,
           archive_dirs: cfg.archive_dirs,
+          date_range: cfg.date_range,
         },
       })
     }

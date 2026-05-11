@@ -80,7 +80,10 @@ pub fn find_cross_dedup(
             }
         }
 
-        // For each archive file, check partial hash match then verify with full hash
+        // For each archive file, find matching wechat files and collect matches
+        // Key: wechat path → (wechat file, Vec<archive file>)
+        let mut wechat_matches: HashMap<String, (&ScannedFile, Vec<&ScannedFile>)> = HashMap::new();
+
         for (archive_sf, archive_hash_result) in &archive_hashes {
             let archive_hash = match archive_hash_result {
                 Ok(h) => h,
@@ -114,7 +117,7 @@ pub fn find_cross_dedup(
                 } else {
                     match hash_file(&wechat_sf.path) {
                         Ok(h) => {
-                            full_hash_cache.insert(wechat_path_key, h.clone());
+                            full_hash_cache.insert(wechat_path_key.clone(), h.clone());
                             h
                         }
                         Err(_) => continue,
@@ -122,42 +125,64 @@ pub fn find_cross_dedup(
                 };
 
                 if wechat_full_hash == archive_full_hash {
-                    let base_name = wechat_sf
-                        .path
-                        .file_name()
-                        .map(|n| n.to_string_lossy().to_string())
-                        .unwrap_or_default();
-
-                    let file_entry_wechat = FileEntry {
-                        path: wechat_sf.path.to_string_lossy().to_string(),
-                        size: wechat_sf.size,
-                        modified: wechat_sf.modified,
-                        hash: wechat_full_hash.clone(),
-                        status: FileStatus::Remove,
-                        source: SourceDir::WechatDir,
-                    };
-
-                    let file_entry_archive = FileEntry {
-                        path: archive_sf.path.to_string_lossy().to_string(),
-                        size: archive_sf.size,
-                        modified: archive_sf.modified,
-                        hash: archive_full_hash.clone(),
-                        status: FileStatus::Keep,
-                        source: SourceDir::ArchiveDir,
-                    };
-
-                    group_id_counter += 1;
-                    groups.push(FileGroup {
-                        id: format!("cross-{}", group_id_counter),
-                        group_type: GroupType::CrossDedup,
-                        base_name,
-                        total_size: wechat_sf.size + archive_sf.size,
-                        reclaimable_size: wechat_sf.size,
-                        files: vec![file_entry_wechat, file_entry_archive],
-                        suggested_keep: 1,
-                    });
+                    wechat_matches
+                        .entry(wechat_path_key)
+                        .or_insert((wechat_sf, Vec::new()))
+                        .1
+                        .push(archive_sf);
                 }
             }
+        }
+
+        // Create one merged group per wechat file
+        for (_, (wechat_sf, matched_archives)) in &wechat_matches {
+            let base_name = wechat_sf
+                .path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+
+            let wechat_hash = full_hash_cache
+                .get(&wechat_sf.path.to_string_lossy().to_string())
+                .cloned()
+                .unwrap_or_default();
+
+            let mut file_entries = vec![FileEntry {
+                path: wechat_sf.path.to_string_lossy().to_string(),
+                size: wechat_sf.size,
+                modified: wechat_sf.modified,
+                hash: wechat_hash,
+                status: FileStatus::Remove,
+                source: SourceDir::WechatDir,
+            }];
+
+            let mut total_size = wechat_sf.size;
+            for archive_sf in matched_archives {
+                let archive_hash = full_hash_cache
+                    .get(&archive_sf.path.to_string_lossy().to_string())
+                    .cloned()
+                    .unwrap_or_default();
+                total_size += archive_sf.size;
+                file_entries.push(FileEntry {
+                    path: archive_sf.path.to_string_lossy().to_string(),
+                    size: archive_sf.size,
+                    modified: archive_sf.modified,
+                    hash: archive_hash,
+                    status: FileStatus::Keep,
+                    source: SourceDir::ArchiveDir,
+                });
+            }
+
+            group_id_counter += 1;
+            groups.push(FileGroup {
+                id: format!("cross-{}", group_id_counter),
+                group_type: GroupType::CrossDedup,
+                base_name,
+                total_size,
+                reclaimable_size: wechat_sf.size,
+                files: file_entries,
+                suggested_keep: matched_archives.len(), // index of last archive file
+            });
         }
     }
 

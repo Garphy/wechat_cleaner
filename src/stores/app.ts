@@ -13,6 +13,7 @@ export interface AppConfig {
   selected_account: string | null
   trash_mode: string
   debug_enabled: boolean
+  date_range?: { after?: number }
 }
 
 export interface ScanProgress {
@@ -52,6 +53,8 @@ export interface ScanResult {
   total_size: number
   redundant_files: number
   redundant_size: number
+  wechat_files: number
+  wechat_size: number
   duration_ms: number
 }
 
@@ -153,6 +156,14 @@ export const useAppStore = defineStore('app', () => {
     return result
   }
 
+  function getSelectedFilesSize(groups: FileGroup[]): number {
+    let total = 0
+    groups.forEach((g) => g.files.forEach((f) => {
+      if (selectedFiles.value.has(f.path)) total += f.size
+    }))
+    return total
+  }
+
   return {
     config,
     accounts,
@@ -171,5 +182,6 @@ export const useAppStore = defineStore('app', () => {
     isGroupPartiallySelected,
     getSelectedFileCount,
     getSelectedFiles,
+    getSelectedFilesSize,
   }
 })

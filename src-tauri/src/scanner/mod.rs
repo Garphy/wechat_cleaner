@@ -28,7 +28,8 @@ impl ScanEngine {
         let start_time = Instant::now();
         let walker = FileWalker::new();
 
-        crate::debug::log(&format!("Scan started. wechat_dir={}, archive_dirs={:?}", config.wechat_dir.display(), config.archive_dirs));
+        let modified_after = config.date_range.as_ref().and_then(|d| d.after);
+        crate::debug::log(&format!("Scan started. wechat_dir={}, archive_dirs={:?}, modified_after={:?}", config.wechat_dir.display(), config.archive_dirs, modified_after));
 
         // Phase 1: Walking
         {
@@ -42,7 +43,7 @@ impl ScanEngine {
         }
 
         // Walk wechat directory
-        let wechat_files = walker.walk(&config.wechat_dir);
+        let wechat_files = walker.walk(&config.wechat_dir, modified_after);
         crate::debug::log(&format!("WeChat files found: {}", wechat_files.len()));
 
         if cancel.load(Ordering::Relaxed) {
@@ -56,7 +57,7 @@ impl ScanEngine {
             if cancel.load(Ordering::Relaxed) {
                 return Self::make_result(Vec::new(), 0, 0, start_time);
             }
-            let mut files = walker.walk(archive_dir);
+            let mut files = walker.walk(archive_dir, modified_after);
             archive_files.append(&mut files);
         }
 
@@ -152,12 +153,26 @@ impl ScanEngine {
             .count() as u64;
         let total_size: u64 = groups.iter().map(|g| g.total_size).sum();
 
+        let wechat_files: u64 = groups
+            .iter()
+            .flat_map(|g| &g.files)
+            .filter(|f| f.source == SourceDir::WechatDir)
+            .count() as u64;
+        let wechat_size: u64 = groups
+            .iter()
+            .flat_map(|g| &g.files)
+            .filter(|f| f.source == SourceDir::WechatDir)
+            .map(|f| f.size)
+            .sum();
+
         ScanResult {
             groups,
             total_files,
             total_size,
             redundant_files,
             redundant_size,
+            wechat_files,
+            wechat_size,
             duration_ms: start_time.elapsed().as_millis() as u64,
         }
     }

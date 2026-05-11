@@ -16,6 +16,8 @@ pub struct AppConfig {
     pub trash_mode: TrashMode,
     #[serde(default = "default_true")]
     pub debug_enabled: bool,
+    #[serde(default)]
+    pub date_range: Option<DateRange>,
 }
 
 fn default_true() -> bool {
@@ -97,6 +99,8 @@ pub struct ScanResult {
     pub total_size: u64,
     pub redundant_files: u64,
     pub redundant_size: u64,
+    pub wechat_files: u64,
+    pub wechat_size: u64,
     pub duration_ms: u64,
 }
 
@@ -117,6 +121,13 @@ pub struct CleanupError {
 pub struct ScanConfig {
     pub wechat_dir: PathBuf,
     pub archive_dirs: Vec<PathBuf>,
+    #[serde(default)]
+    pub date_range: Option<DateRange>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DateRange {
+    pub after: Option<i64>, // unix timestamp: only include files modified after this
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

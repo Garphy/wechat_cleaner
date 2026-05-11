@@ -22,14 +22,14 @@ const showReport = ref(false)
 
 const allGroups = ref<FileGroup[]>([])
 
-const totalFiles = computed(() => store.scanResult?.total_files ?? 0)
-const totalSize = computed(() => store.scanResult?.total_size ?? 0)
+const totalFiles = computed(() => store.scanResult?.wechat_files ?? 0)
+const totalSize = computed(() => store.scanResult?.wechat_size ?? 0)
 const redundantFiles = computed(() => store.scanResult?.redundant_files ?? 0)
 const redundantSize = computed(() => store.scanResult?.redundant_size ?? 0)
 const durationMs = computed(() => store.scanResult?.duration_ms ?? 0)
 const selectedFileCount = computed(() => store.getSelectedFileCount())
+const selectedDeleteSize = computed(() => store.getSelectedFilesSize(allGroups.value))
 const selectedFilesToDelete = computed(() => store.getSelectedFiles(allGroups.value))
-const selectedDeleteSize = computed(() => selectedFilesToDelete.value.reduce((acc, f) => acc + f.size, 0))
 
 // ── Path shortening ─────────────────────────────────────────────
 function shortenPath(path: string): string {
@@ -84,6 +84,18 @@ function isExpanded(id: string): boolean {
   return expandedGroups.value.has(id)
 }
 
+const allExpanded = computed(() =>
+  allGroups.value.length > 0 && allGroups.value.every((g) => expandedGroups.value.has(g.id))
+)
+
+function toggleExpandAll() {
+  if (allExpanded.value) {
+    expandedGroups.value = new Set()
+  } else {
+    expandedGroups.value = new Set(allGroups.value.map((g) => g.id))
+  }
+}
+
 // ── File selection helpers ───────────────────────────────────────
 function getCheckboxClass(group: FileGroup): string {
   if (store.isGroupFullySelected(group)) return 'text-red-500'
@@ -136,7 +148,8 @@ function handleSort(field: 'size' | 'time' | 'name') {
 async function executeCleanup() {
   cleaningUp.value = true
   try {
-    const filePaths = selectedFilesToDelete.value.map((f) => f.path)
+    // Use global selectedFiles set (covers all pages, not just loaded ones)
+    const filePaths = Array.from(store.selectedFiles)
     const report = await invoke<CleanupReport>('execute_cleanup', {
       filePaths,
       mode: store.config?.trash_mode || 'trash',
@@ -148,7 +161,7 @@ async function executeCleanup() {
     allGroups.value = allGroups.value
       .map((g) => ({ ...g, files: g.files.filter((f) => !cleanedPaths.has(f.path)) }))
       .filter((g) => g.files.length > 0)
-    filePaths.forEach((p) => store.selectedFiles.delete(p))
+    cleanedPaths.forEach((p) => store.selectedFiles.delete(p))
   } catch (e) {
     error.value = String(e)
   } finally {
@@ -256,6 +269,7 @@ onMounted(async () => {
 
       <div class="flex-1" />
 
+      <button @click="toggleExpandAll" class="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs text-gray-400 hover:bg-gray-700">{{ allExpanded ? '全部收起' : '全部展开' }}</button>
       <button @click="store.initFileSelection(allGroups)" class="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs text-gray-400 hover:bg-gray-700">恢复默认</button>
       <button @click="store.selectAllFiles(allGroups)" class="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs text-gray-400 hover:bg-gray-700">全选删除</button>
       <button @click="store.deselectAllFiles()" class="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs text-gray-400 hover:bg-gray-700">全部保留</button>

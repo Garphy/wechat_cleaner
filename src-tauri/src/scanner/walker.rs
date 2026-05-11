@@ -36,7 +36,7 @@ impl FileWalker {
         false
     }
 
-    pub fn walk(&self, root: &Path) -> Vec<ScannedFile> {
+    pub fn walk(&self, root: &Path, modified_after: Option<i64>) -> Vec<ScannedFile> {
         WalkDir::new(root)
             .follow_links(false)
             .into_iter()
@@ -51,6 +51,12 @@ impl FileWalker {
                     .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                     .map(|d| d.as_secs() as i64)
                     .unwrap_or(0);
+                // Date range filter: skip files modified before cutoff
+                if let Some(after) = modified_after {
+                    if modified < after {
+                        return None;
+                    }
+                }
                 Some(ScannedFile {
                     path: e.path().to_path_buf(),
                     size: meta.len(),

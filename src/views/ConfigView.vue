@@ -19,6 +19,7 @@ const trashMode = ref<'trash' | 'delete'>('trash')
 const dirErrors = ref<Record<number, string>>({})
 const debugMode = ref(false)
 const logPath = ref('')
+const dateRange = ref<'all' | '3months' | '6months' | '1year'>('all')
 
 // ── Directory validation ──────────────────────────────────────────
 async function validateDir(path: string): Promise<boolean> {
@@ -80,8 +81,20 @@ function debouncedSave() {
   }, 500)
 }
 
+// Date range computation
+function getDateRangeAfter(): number | undefined {
+  if (dateRange.value === 'all') return undefined
+  const now = Date.now()
+  const ms = {
+    '3months': 90 * 24 * 60 * 60 * 1000,
+    '6months': 180 * 24 * 60 * 60 * 1000,
+    '1year': 365 * 24 * 60 * 60 * 1000,
+  }[dateRange.value]
+  return Math.floor((now - ms) / 1000) // unix timestamp
+}
+
 // Watch all config fields for auto-save
-watch([wechatDir, archiveDirs, selectedAccount, trashMode, debugMode], debouncedSave, { deep: true })
+watch([wechatDir, archiveDirs, selectedAccount, trashMode, debugMode, dateRange], debouncedSave, { deep: true })
 
 // ── Debug mode ────────────────────────────────────────────────────
 async function toggleDebug() {
@@ -103,12 +116,14 @@ async function clearLogFile() {
 }
 
 async function saveConfig() {
+  const after = getDateRangeAfter()
   const config: AppConfig = {
     wechat_dir: wechatDir.value,
     archive_dirs: archiveDirs.value.filter((d) => d.trim()),
     selected_account: selectedAccount.value,
     trash_mode: trashMode.value,
     debug_enabled: debugMode.value,
+    date_range: after ? { after } : undefined,
   }
   await invoke('save_config', { config })
   store.config = config
@@ -133,6 +148,16 @@ onMounted(async () => {
       selectedAccount.value = existingConfig.selected_account
       trashMode.value = (existingConfig.trash_mode as 'trash' | 'delete') || 'trash'
       debugMode.value = existingConfig.debug_enabled ?? true
+      // Restore date range from config
+      const after = existingConfig.date_range?.after
+      if (!after) {
+        dateRange.value = 'all'
+      } else {
+        const msAgo = Date.now() / 1000 - after
+        if (msAgo <= 90 * 86400) dateRange.value = '3months'
+        else if (msAgo <= 180 * 86400) dateRange.value = '6months'
+        else dateRange.value = '1year'
+      }
     }
 
     // Sync debug mode to runtime
@@ -315,6 +340,37 @@ async function startScan() {
               <div class="text-sm text-white font-medium">⛔ 永久删除</div>
               <div class="text-xs text-gray-400">文件将被永久删除，无法恢复</div>
             </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Date Range Filter -->
+      <div class="bg-gray-800 rounded-xl border border-gray-700 p-5">
+        <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+          <span class="text-xl">📅</span> 扫描时间范围
+        </h2>
+        <div class="text-xs text-gray-400 mb-3">按文件修改时间过滤，只扫描指定时间范围内的文件</div>
+        <div class="grid grid-cols-2 gap-2">
+          <label
+            v-for="opt in [
+              { value: 'all', label: '全部' },
+              { value: '3months', label: '三个月内' },
+              { value: '6months', label: '半年内' },
+              { value: '1year', label: '一年内' },
+            ]"
+            :key="opt.value"
+            class="flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-all"
+            :class="dateRange === opt.value
+              ? 'bg-blue-900/30 border-blue-600'
+              : 'bg-gray-700/50 border-gray-600 hover:border-gray-500'"
+          >
+            <input
+              type="radio"
+              :value="opt.value"
+              v-model="dateRange"
+              class="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 focus:ring-blue-500"
+            />
+            <span class="text-sm text-white">{{ opt.label }}</span>
           </label>
         </div>
       </div>
