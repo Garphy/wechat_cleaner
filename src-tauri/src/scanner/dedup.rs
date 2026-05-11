@@ -1,52 +1,75 @@
 use crate::scanner::hash::{hash_file, hash_file_head_tail};
 use crate::scanner::walker::ScannedFile;
 use crate::types::*;
+use rayon::prelude::*;
 use regex::Regex;
 use std::collections::HashMap;
 use std::io;
 
 /// Cross-directory deduplication: find files in wechat_dir that are identical
 /// to files in archive_dirs.
+///
+/// Optimized for large file sets (100K+) with remote storage:
+/// - Pre-groups by size in a single pass (no O(n²) filtering)
+/// - Caches full hashes to avoid recomputation
+/// - Parallelizes partial hash computation within each size group
 pub fn find_cross_dedup(
     wechat_files: &[ScannedFile],
     archive_files: &[ScannedFile],
 ) -> Vec<FileGroup> {
-    // Group all files by size
-    let mut size_map: HashMap<u64, Vec<&ScannedFile>> = HashMap::new();
-
+    // Pre-group all files by size with source tag — single pass, no filtering needed later
+    let mut size_map: HashMap<u64, Vec<(&ScannedFile, SourceDir)>> = HashMap::new();
     for f in wechat_files {
-        size_map.entry(f.size).or_default().push(f);
+        size_map.entry(f.size).or_default().push((f, SourceDir::WechatDir));
     }
     for f in archive_files {
-        size_map.entry(f.size).or_default().push(f);
+        size_map.entry(f.size).or_default().push((f, SourceDir::ArchiveDir));
     }
+
+    let total_size_groups = size_map.len();
+    crate::debug::log(&format!(
+        "find_cross_dedup: {} wechat files, {} archive files, {} unique sizes",
+        wechat_files.len(), archive_files.len(), total_size_groups
+    ));
 
     let mut groups = Vec::new();
     let mut group_id_counter = 0u64;
+    let mut full_hash_cache: HashMap<String, String> = HashMap::new(); // path → hash
+    let mut processed_sizes = 0usize;
 
     for (_size, files) in &size_map {
-        // Only consider groups with files from BOTH wechat and archive
-        let wechat_in_group: Vec<&&ScannedFile> = files
-            .iter()
-            .filter(|f| wechat_files.iter().any(|wf| wf.path == f.path))
+        processed_sizes += 1;
+
+        // Split by source — O(n) within this size group only
+        let wechat_in_group: Vec<&ScannedFile> = files.iter()
+            .filter(|(_, src)| matches!(src, SourceDir::WechatDir))
+            .map(|(f, _)| *f)
             .collect();
-        let archive_in_group: Vec<&&ScannedFile> = files
-            .iter()
-            .filter(|f| archive_files.iter().any(|af| af.path == f.path))
+        let archive_in_group: Vec<&ScannedFile> = files.iter()
+            .filter(|(_, src)| matches!(src, SourceDir::ArchiveDir))
+            .map(|(f, _)| *f)
             .collect();
 
         if wechat_in_group.is_empty() || archive_in_group.is_empty() {
             continue;
         }
 
-        // Compute partial hashes for all files in this size group
+        // Log progress every 1000 size groups
+        if processed_sizes % 1000 == 0 {
+            crate::debug::log(&format!(
+                "find_cross_dedup: processed {}/{} size groups, {} matches so far",
+                processed_sizes, total_size_groups, groups.len()
+            ));
+        }
+
+        // Compute partial hashes in parallel for this size group
         let wechat_hashes: Vec<(&ScannedFile, io::Result<String>)> = wechat_in_group
-            .iter()
-            .map(|f| (**f, hash_file_head_tail(&f.path)))
+            .par_iter()
+            .map(|f| (*f, hash_file_head_tail(&f.path)))
             .collect();
         let archive_hashes: Vec<(&ScannedFile, io::Result<String>)> = archive_in_group
-            .iter()
-            .map(|f| (**f, hash_file_head_tail(&f.path)))
+            .par_iter()
+            .map(|f| (*f, hash_file_head_tail(&f.path)))
             .collect();
 
         // Group wechat files by partial hash
@@ -57,7 +80,7 @@ pub fn find_cross_dedup(
             }
         }
 
-        // For each archive file, check partial hash match
+        // For each archive file, check partial hash match then verify with full hash
         for (archive_sf, archive_hash_result) in &archive_hashes {
             let archive_hash = match archive_hash_result {
                 Ok(h) => h,
@@ -69,20 +92,36 @@ pub fn find_cross_dedup(
                 None => continue,
             };
 
-            // Partial match found — verify with full hash
-            let archive_full_hash = match hash_file(&archive_sf.path) {
-                Ok(h) => h,
-                Err(_) => continue,
+            // Compute full hash for archive file (with cache)
+            let archive_path_key = archive_sf.path.to_string_lossy().to_string();
+            let archive_full_hash = if let Some(cached) = full_hash_cache.get(&archive_path_key) {
+                cached.clone()
+            } else {
+                match hash_file(&archive_sf.path) {
+                    Ok(h) => {
+                        full_hash_cache.insert(archive_path_key, h.clone());
+                        h
+                    }
+                    Err(_) => continue,
+                }
             };
 
             for wechat_sf in matching_wechat {
-                let wechat_full_hash = match hash_file(&wechat_sf.path) {
-                    Ok(h) => h,
-                    Err(_) => continue,
+                // Compute full hash for wechat file (with cache)
+                let wechat_path_key = wechat_sf.path.to_string_lossy().to_string();
+                let wechat_full_hash = if let Some(cached) = full_hash_cache.get(&wechat_path_key) {
+                    cached.clone()
+                } else {
+                    match hash_file(&wechat_sf.path) {
+                        Ok(h) => {
+                            full_hash_cache.insert(wechat_path_key, h.clone());
+                            h
+                        }
+                        Err(_) => continue,
+                    }
                 };
 
                 if wechat_full_hash == archive_full_hash {
-                    // Found a cross-dedup match: wechat file is redundant
                     let base_name = wechat_sf
                         .path
                         .file_name()
@@ -115,12 +154,17 @@ pub fn find_cross_dedup(
                         total_size: wechat_sf.size + archive_sf.size,
                         reclaimable_size: wechat_sf.size,
                         files: vec![file_entry_wechat, file_entry_archive],
-                        suggested_keep: 1, // Index 1 is the archive copy
+                        suggested_keep: 1,
                     });
                 }
             }
         }
     }
+
+    crate::debug::log(&format!(
+        "find_cross_dedup complete: {} groups found, full_hash_cache size={}",
+        groups.len(), full_hash_cache.len()
+    ));
 
     groups
 }
