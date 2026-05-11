@@ -55,6 +55,7 @@ pub fn load_config() -> crate::types::AppConfig {
         selected_account: None,
         trash_mode: crate::types::TrashMode::Trash,
         debug_enabled: true,
+        date_range: None,
     }
 }
 

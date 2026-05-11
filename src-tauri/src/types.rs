@@ -48,7 +48,7 @@ pub enum FileStatus {
     UserDecided,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SourceDir {
     WechatDir,
     ArchiveDir,

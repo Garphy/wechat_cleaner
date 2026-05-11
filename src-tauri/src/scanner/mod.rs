@@ -3,7 +3,7 @@ pub mod hash;
 pub mod walker;
 
 use crate::scanner::dedup::{find_cross_dedup, find_version_groups};
-use crate::scanner::walker::{FileWalker, ScannedFile};
+use crate::scanner::walker::FileWalker;
 use crate::types::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
