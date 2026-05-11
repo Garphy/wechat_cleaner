@@ -1,6 +1,6 @@
 [package]
 name = "wechat-cleaner"
-version = "0.1.1"
+version = "0.1.2"
 description = "A WeChat cache cleaner"
 authors = ["Garphy"]
 edition = "2026"
