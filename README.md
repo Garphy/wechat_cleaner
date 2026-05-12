@@ -2,10 +2,10 @@
   <img src="src-tauri/icons/icon.ico" width="100" alt="WeChat Cleaner Logo">
 </p>
 
-<h1 align="center">微剪 WeChat Cleaner</h1>
+<h1 align="center">WeChat Cleaner</h1>
 
 <p align="center">
-  <strong>PC 端微信聊天文件智能清理工具</strong>
+  <strong>PC端微信聊天文件智能清理工具</strong>
 </p>
 
 <p align="center">
@@ -18,7 +18,7 @@
 
 ## 产品简介
 
-**微剪**是一款专为 PC 端微信设计的本地文件清理工具。它能智能识别微信聊天目录中的冗余文件——包括跨目录重复文件和历史版本堆积文件，帮助用户安全释放磁盘空间。
+**Wechat Cleaner**是一款专为 PC 端微信设计的本地文件清理工具。它能智能识别微信聊天目录中的冗余文件——包括跨目录重复文件和历史版本堆积文件，帮助用户安全释放磁盘空间。
 
 ### 核心痛点
 
@@ -59,9 +59,9 @@ PC 版微信采用「追加式」存储策略：
 ### 方式一：下载安装包（推荐）
 
 1. 前往 [Releases](https://github.com/tricklr/wechat_cleaner/releases) 页面
-2. 下载最新版本的 `wechat-cleaner_x.x.x_x64-setup.exe`
-3. 双击运行安装程序，按提示完成安装
-4. 启动「微剪」即可开始使用
+2. 下载最新版本的exe文件；
+3. 双击运行安装程序，按提示完成安装；
+4. 启动程序即可开始使用。
 
 ### 方式二：从源码构建
 
@@ -69,7 +69,7 @@ PC 版微信采用「追加式」存储策略：
 # 前置条件：安装 Rust、Node.js 18+
 
 # 克隆仓库
-git clone https://github.com/tricklr/wechat_cleaner.git
+git clone https://github.com/garphy/wechat_cleaner.git
 cd wechat_cleaner
 
 # 安装前端依赖
@@ -94,7 +94,7 @@ npm run tauri build
 
 1. **微信目录**：选择你的微信文件存储路径，通常位于：
    - `C:\Users\<用户名>\Documents\WeChat Files\<微信号>\`
-   - 或 `D:\WeChat Files\<微信号>\`
+   - 或 `C:\Users\<用户名>\Documents\xwechat_files\<微信号>\msg\file\`
 2. **归档目录**：添加你平时手动归档文件的目录（支持多个）
 3. **清理模式**：
    - **移入回收站**（默认，推荐）— 可恢复
